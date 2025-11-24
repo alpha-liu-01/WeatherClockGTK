@@ -42,9 +42,15 @@
 
 # CMake
 build/
-dllpack/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 *.cmake
 !CMakeLists.txt
+
+# Deployment
+deploy/
+dllpack/
+
+# Config files
+weatherclock.conf
