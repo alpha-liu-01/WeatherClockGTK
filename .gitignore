@@ -52,5 +52,13 @@ cmake_install.cmake
 deploy/
 dllpack/
 
+# Debian packaging
+debian/
+*.deb
+*.dsc
+*.tar.gz
+*.changes
+*.buildinfo
+
 # Config files
 weatherclock.conf

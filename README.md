@@ -50,7 +50,9 @@ sudo dnf install gtk4-devel libsoup3-devel json-glib-devel pkg-config gcc cmake
 
 ## Building
 
-### Quick Build (PowerShell Script - Recommended for Windows)
+### Quick Build Scripts
+
+#### Windows (PowerShell Script)
 
 The easiest way to build and run on Windows:
 
@@ -67,7 +69,7 @@ This script will:
 **Options:**
 - `.\build.ps1 -SkipClean` - Skip cleaning the build directory
 - `.\build.ps1 -SkipRun` - Build but don't launch the executable
-- `.\build.ps1 -Compiler "path/to/clang.exe"` - Specify a custom compiler path
+- `.\build.ps1 -Deploy` - Build and create deployment package
 - `.\build.ps1 40.7128 -74.0060` - Pass arguments to the executable (e.g., location coordinates)
 
 **Running the Application:**
@@ -85,6 +87,41 @@ Or with location arguments:
 ```
 
 The `run.ps1` script automatically ensures that MSYS2 clang64 DLLs are found from PATH, so you don't need to manually set environment variables. For distribution, you'll need to copy the required DLLs to the executable's directory (see Distribution section below).
+
+#### Linux (Bash Script)
+
+The easiest way to build and run on Linux:
+
+```bash
+./build.sh
+```
+
+This script will:
+- Check for required dependencies
+- Clean the build directory
+- Configure with CMake
+- Build the project
+- Launch the executable
+
+**Options:**
+- `./build.sh --skip-clean` - Skip cleaning the build directory
+- `./build.sh --skip-run` - Build but don't launch the executable
+- `./build.sh --deploy` - Create deployment package
+- `./build.sh --help` - Show help message
+
+**Running the Application:**
+
+After building, you can run the application using:
+
+```bash
+./build/weatherclock
+```
+
+Or with location arguments:
+
+```bash
+./build/weatherclock 40.7128 -74.0060
+```
 
 ### Manual Build with CMake
 
@@ -189,7 +226,9 @@ Default location is Berlin, Germany (52.52, 13.41).
 - The clock updates every second
 - Weather data refreshes every minute
 
-## DLL Dependencies (Windows)
+## Distribution
+
+### Windows Deployment
 
 The application depends on several DLLs from MSYS2 clang64. When running from the build scripts (`build.ps1` or `run.ps1`), the clang64 bin directory is automatically added to PATH, so DLLs are found automatically.
 
@@ -197,9 +236,54 @@ The application depends on several DLLs from MSYS2 clang64. When running from th
 - Ensure `C:\msys64\clang64\bin` is in your system PATH, or use the provided scripts
 
 **For distribution:**
-- Copy required DLLs from `C:\msys64\clang64\bin` to the same directory as the executable
-- You can use tools like `ldd` (from MSYS2) or Dependency Walker to identify required DLLs
-- Common DLLs needed: `libgtk-4-1.dll`, `libsoup-3.0-1.dll`, `libjson-glib-1.0-0.dll`, `libglib-2.0-0.dll`, `libgobject-2.0-0.dll`, and their dependencies
+- Use `.\build.ps1 -Deploy` to create a deployment package with all required DLLs
+- The deployment script automatically collects all dependencies, GDK-Pixbuf loaders, GIO modules, SSL certificates, and creates a `run.bat` launcher
+- The `deploy/` directory contains everything needed to run on a fresh Windows installation
+
+### Linux Deployment
+
+#### Debian Package (.deb)
+
+To create a Debian package for amd64 or arm64:
+
+```bash
+./package-deb.sh
+```
+
+This script will:
+- Check for build dependencies
+- Create a proper Debian package structure
+- Build a `.deb` package compatible with your architecture
+- Output the package file in the parent directory
+
+**Installing the package:**
+
+```bash
+sudo dpkg -i weatherclockgtk_1.0.0_amd64.deb
+# or
+sudo dpkg -i weatherclockgtk_1.0.0_arm64.deb
+```
+
+If dependencies are missing:
+
+```bash
+sudo apt-get install -f
+```
+
+**Building for different architectures:**
+
+The package script automatically detects your current architecture. To build for a different architecture, you'll need to use cross-compilation tools or build on a system with that architecture.
+
+**Package dependencies:**
+
+The `.deb` package includes runtime dependencies:
+- `libgtk-4-1`
+- `libsoup-3.0-0`
+- `libjson-glib-1.0-0`
+- `libglib2.0-0`
+- Standard C library
+
+These will be automatically installed when installing the package.
 
 ## Weather API
 
