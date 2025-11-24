@@ -312,6 +312,8 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
         
         GtkWidget *hour_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_widget_add_css_class(hour_box, "weather-hour");
+        gtk_widget_set_hexpand(hour_box, TRUE);
+        gtk_widget_set_halign(hour_box, GTK_ALIGN_FILL);
         
         // Time label (extract hour from ISO time string)
         char hour_str[8];
@@ -671,6 +673,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_window_set_default_size(GTK_WINDOW(data->window), 800, 600);
     gtk_window_fullscreen(GTK_WINDOW(data->window));
     
+    // Set window background to black
+    gtk_widget_set_name(data->window, "main-window");
+    
     // Main container
     GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
     gtk_widget_set_margin_top(main_box, 40);
@@ -745,6 +750,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
     
     data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
     gtk_widget_add_css_class(data->weather_box, "weather-container");
+    gtk_widget_set_halign(data->weather_box, GTK_ALIGN_CENTER);
+    gtk_box_set_homogeneous(GTK_BOX(data->weather_box), TRUE);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), data->weather_box);
     
     gtk_box_append(GTK_BOX(weather_section), scrolled);
@@ -753,40 +760,45 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // CSS styling
     GtkCssProvider *css_provider = gtk_css_provider_new();
     const char *css = 
+        "#main-window {"
+        "  background-color: #000000;"
+        "}"
+        "window {"
+        "  background-color: #000000;"
+        "}"
         ".clock-time {"
         "  font-size: 400px;"
         "  font-weight: bold;"
-        "  color: #2e3440;"
+        "  color: #ffffff;"
         "}"
         ".clock-date {"
         "  font-size: 100px;"
-        "  color: #4c566a;"
+        "  color: #ffffff;"
         "}"
         ".weather-section {"
-        "  background-color: rgba(236, 239, 244, 0.8);"
+        "  background-color: rgba(20, 20, 20, 0.9);"
         "  border-radius: 15px;"
         "  padding: 20px;"
         "}"
         ".weather-title {"
         "  font-size: 28px;"
         "  font-weight: bold;"
-        "  color: #2e3440;"
+        "  color: #ffffff;"
         "  margin-bottom: 10px;"
         "}"
         ".weather-container {"
         "  padding: 10px;"
         "}"
         ".weather-hour {"
-        "  background-color: white;"
+        "  background-color: rgba(40, 40, 40, 0.9);"
         "  border-radius: 10px;"
         "  padding: 15px;"
-        "  min-width: 330px;"
         "  margin: 5px;"
         "}"
         ".weather-time {"
-        "  font-size: 18px;"
+        "  font-size: 36px;"
         "  font-weight: bold;"
-        "  color: #2e3440;"
+        "  color: #ffffff;"
         "}"
         ".weather-icon {"
         "  font-size: 48px;"
@@ -794,14 +806,14 @@ static void activate(GtkApplication *app, gpointer user_data) {
         ".weather-temp {"
         "  font-size: 72px;"
         "  font-weight: bold;"
-        "  color: #5e81ac;"
+        "  color: #ffffff;"
         "}"
         ".weather-desc {"
         "  font-size: 14px;"
-        "  color: #4c566a;"
+        "  color: #cccccc;"
         "}"
         ".error-text {"
-        "  color: #bf616a;"
+        "  color: #ff6b6b;"
         "  font-size: 18px;"
         "}"
         ".location-box {"
@@ -810,16 +822,19 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "}"
         ".location-box label {"
         "  margin: 0 5px;"
+        "  color: #ffffff;"
         "}"
         ".location-box entry {"
         "  min-width: 100px;"
         "  margin: 0 10px;"
+        "  background-color: #1a1a1a;"
+        "  color: #ffffff;"
         "}"
         ".exit-button {"
         "  padding: 10px 20px;"
         "  font-size: 16px;"
         "  background-color: #bf616a;"
-        "  color: black;"
+        "  color: #000000;"
         "  border-radius: 5px;"
         "}"
         ".exit-button:hover {"
