@@ -25,6 +25,9 @@ typedef struct {
     SoupSession *session;
     gchar *location_lat;
     gchar *location_lon;
+    gchar *timezone;  // IANA timezone (e.g., "America/Toronto")
+    GTimeZone *tz;    // GTimeZone object for time conversion
+    gint utc_offset_seconds;  // UTC offset in seconds (fallback if timezone creation fails)
 } AppData;
 
 // Weather code to description mapping
@@ -65,20 +68,47 @@ static void update_clock(AppData *data) {
         return; // time() failed
     }
     
-    struct tm *tm_info = localtime(&now);
-    if (!tm_info) {
-        return; // localtime() failed
+    GDateTime *dt;
+    if (data->tz) {
+        // Convert UTC time to the location's timezone
+        // time() returns UTC seconds since epoch
+        dt = g_date_time_new_from_unix_utc(now);
+        if (dt) {
+            GDateTime *dt_tz = g_date_time_to_timezone(dt, data->tz);
+            g_date_time_unref(dt);
+            dt = dt_tz;
+        }
+    } else if (data->utc_offset_seconds != 0) {
+        // Fallback: use UTC offset if timezone object creation failed
+        // Add offset to UTC time
+        time_t adjusted_time = now + data->utc_offset_seconds;
+        dt = g_date_time_new_from_unix_utc(adjusted_time);
+    } else {
+        // Fallback to system local time
+        dt = g_date_time_new_from_unix_local(now);
     }
     
-    char time_str[64];
-    char date_str[64];
+    if (!dt) {
+        return;
+    }
     
-    strftime(time_str, sizeof(time_str), "%H:%M:%S", tm_info);
-    strftime(date_str, sizeof(date_str), "%A, %B %d, %Y", tm_info);
+    gchar *time_str = g_date_time_format(dt, "%H:%M:%S");
+    gchar *date_str = g_date_time_format(dt, "%A, %B %d, %Y");
     
-    gtk_label_set_text(GTK_LABEL(data->clock_label), time_str);
-    gtk_label_set_text(GTK_LABEL(data->date_label), date_str);
+    if (time_str) {
+        gtk_label_set_text(GTK_LABEL(data->clock_label), time_str);
+        g_free(time_str);
+    }
+    if (date_str) {
+        gtk_label_set_text(GTK_LABEL(data->date_label), date_str);
+        g_free(date_str);
+    }
+    
+    g_date_time_unref(dt);
 }
+
+// Forward declarations
+static void save_location_to_config(AppData *data);
 
 static void parse_weather_json(const char *json_data_str, AppData *data) {
     if (!data || !data->weather_box) {
@@ -138,6 +168,49 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         g_object_unref(parser);
         return;
+    }
+    
+    // Extract timezone from API response
+    if (json_object_has_member(root_obj, "timezone")) {
+        JsonNode *tz_node = json_object_get_member(root_obj, "timezone");
+        const gchar *tz_str = json_node_get_string(tz_node);
+        if (tz_str && strlen(tz_str) > 0) {
+            // Update timezone
+            if (data->tz) {
+                g_time_zone_unref(data->tz);
+                data->tz = NULL;
+            }
+            g_free(data->timezone);
+            data->timezone = g_strdup(tz_str);
+            data->tz = g_time_zone_new_identifier(tz_str);
+            if (!data->tz) {
+                // Fallback: try the deprecated function (might work on some systems)
+                // Suppress deprecation warning since this is an intentional fallback
+                G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+                data->tz = g_time_zone_new(tz_str);
+                G_GNUC_END_IGNORE_DEPRECATIONS
+                if (!data->tz) {
+                    g_debug("Failed to create timezone for: %s, will use UTC offset if available", tz_str);
+                } else {
+                    g_debug("Set timezone to: %s (using deprecated API)", tz_str);
+                    save_location_to_config(data);
+                }
+            } else {
+                g_debug("Set timezone to: %s", tz_str);
+                // Save timezone to config
+                save_location_to_config(data);
+            }
+        }
+    }
+    
+    // Extract UTC offset as fallback (in seconds)
+    if (json_object_has_member(root_obj, "utc_offset_seconds")) {
+        JsonNode *offset_node = json_object_get_member(root_obj, "utc_offset_seconds");
+        if (json_node_get_value_type(offset_node) == G_TYPE_INT64) {
+            gint64 offset = json_node_get_int(offset_node);
+            data->utc_offset_seconds = (gint)offset;
+            g_debug("UTC offset: %d seconds (%+.1f hours)", data->utc_offset_seconds, data->utc_offset_seconds / 3600.0);
+        }
     }
     
     // Check for API errors first - Open-Meteo returns "error" as boolean or "reason" as string
@@ -312,8 +385,6 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
         
         GtkWidget *hour_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_widget_add_css_class(hour_box, "weather-hour");
-        gtk_widget_set_hexpand(hour_box, TRUE);
-        gtk_widget_set_halign(hour_box, GTK_ALIGN_FILL);
         
         // Time label (extract hour from ISO time string)
         char hour_str[8];
@@ -460,7 +531,7 @@ static void on_weather_response(GObject *source_object, GAsyncResult *res, gpoin
     g_object_unref(msg);
 }
 
-// Forward declaration
+// Forward declarations
 static void fetch_weather(AppData *data);
 
 static gchar* get_config_file_path(void) {
@@ -485,6 +556,9 @@ static void save_location_to_config(AppData *data) {
     GKeyFile *key_file = g_key_file_new();
     g_key_file_set_string(key_file, "Location", "latitude", data->location_lat);
     g_key_file_set_string(key_file, "Location", "longitude", data->location_lon);
+    if (data->timezone) {
+        g_key_file_set_string(key_file, "Location", "timezone", data->timezone);
+    }
     
     GError *error = NULL;
     if (!g_key_file_save_to_file(key_file, config_path, &error)) {
@@ -546,6 +620,33 @@ static void load_location_from_config(AppData *data) {
         data->location_lon = lon;
     } else {
         g_free(lon);
+    }
+    
+    if (error) {
+        g_error_free(error);
+        error = NULL;
+    }
+    
+    // Load timezone if available
+    gchar *tz = g_key_file_get_string(key_file, "Location", "timezone", &error);
+    if (tz && strlen(tz) > 0) {
+        if (data->tz) {
+            g_time_zone_unref(data->tz);
+        }
+        g_free(data->timezone);
+        data->timezone = tz;
+        data->tz = g_time_zone_new_identifier(tz);
+        if (!data->tz) {
+            // Fallback: try the deprecated function
+            G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+            data->tz = g_time_zone_new(tz);
+            G_GNUC_END_IGNORE_DEPRECATIONS
+            if (!data->tz) {
+                g_debug("Failed to create timezone from config: %s", tz);
+            }
+        }
+    } else {
+        g_free(tz);
     }
     
     if (error) {
@@ -631,7 +732,7 @@ static void fetch_weather(AppData *data) {
     
     char url[512];
     int url_len = snprintf(url, sizeof(url), 
-             "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=temperature_2m,weathercode&forecast_days=1",
+             "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=temperature_2m,weathercode&forecast_days=1&timezone=auto",
              lat, lon);
     
     if (url_len < 0 || url_len >= (int)sizeof(url)) {
@@ -672,7 +773,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_window_set_title(GTK_WINDOW(data->window), "Weather Clock");
     gtk_window_set_default_size(GTK_WINDOW(data->window), 800, 600);
     gtk_window_fullscreen(GTK_WINDOW(data->window));
-    
+
     // Set window background to black
     gtk_widget_set_name(data->window, "main-window");
     
@@ -750,12 +851,17 @@ static void activate(GtkApplication *app, gpointer user_data) {
     
     data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
     gtk_widget_add_css_class(data->weather_box, "weather-container");
+
     gtk_widget_set_halign(data->weather_box, GTK_ALIGN_CENTER);
     gtk_box_set_homogeneous(GTK_BOX(data->weather_box), TRUE);
+    
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), data->weather_box);
+
+    
     
     gtk_box_append(GTK_BOX(weather_section), scrolled);
     gtk_box_append(GTK_BOX(main_box), weather_section);
+    
     
     // CSS styling
     GtkCssProvider *css_provider = gtk_css_provider_new();
@@ -929,8 +1035,12 @@ int main(int argc, char *argv[]) {
     if (data->session) {
         g_object_unref(data->session);
     }
+    if (data->tz) {
+        g_time_zone_unref(data->tz);
+    }
     g_free(data->location_lat);
     g_free(data->location_lon);
+    g_free(data->timezone);
     g_free(data);
     
     return status;
