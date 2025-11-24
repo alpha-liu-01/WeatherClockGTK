@@ -42,6 +42,7 @@
 
 # CMake
 build/
+dllpack/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
