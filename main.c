@@ -23,6 +23,10 @@ typedef struct {
     GtkWidget *lat_entry;
     GtkWidget *lon_entry;
     SoupSession *session;
+    SoupMessage *pending_message;  // Track pending HTTP request to cancel on exit
+    GtkCssProvider *css_provider;   // Track CSS provider for cleanup
+    guint clock_timer_id;           // Track clock update timer
+    guint weather_timer_id;         // Track weather update timer
     gchar *location_lat;
     gchar *location_lon;
     gchar *timezone;  // IANA timezone (e.g., "America/Toronto")
@@ -124,6 +128,9 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
     GtkWidget *child;
     while ((child = gtk_widget_get_first_child(data->weather_box))) {
         gtk_box_remove(GTK_BOX(data->weather_box), child);
+        // Widget is automatically unparented and will be destroyed when last reference drops
+        // GTK widgets use reference counting, so explicit unref is usually not needed
+        // but we can add it for extra safety if needed
     }
     
     if (!json_data_str || strlen(json_data_str) == 0) {
@@ -267,15 +274,17 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
             // Error is a string
             error_msg = json_node_get_string(error_node);
         } else {
-            // Unknown error type
-            char type_str[64];
-            snprintf(type_str, sizeof(type_str), "Error type: %s", g_type_name(error_type));
-            error_msg = type_str;
+            // Unknown error type - set to NULL, we'll format it directly below
+            error_msg = NULL;
         }
         
         char error_text[512];
         if (error_msg) {
             snprintf(error_text, sizeof(error_text), "API Error: %s (Keys: %s)", error_msg, keys_str->str);
+        } else if (error_type != G_TYPE_BOOLEAN && error_type != G_TYPE_STRING) {
+            // Format unknown error type directly into error_text
+            snprintf(error_text, sizeof(error_text), "API Error: Error type: %s (Keys: %s)", 
+                     g_type_name(error_type), keys_str->str);
         } else {
             snprintf(error_text, sizeof(error_text), "API Error: Unknown (Keys: %s)", keys_str->str);
         }
@@ -340,30 +349,34 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
     guint hours_to_show = (array_length > 6) ? 6 : array_length;
     
     // Get current time to show only future hours
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
-    int current_hour = tm_info->tm_hour;
     int start_index = 0;
-    
-    // Find the first future hour
-    for (guint i = 0; i < array_length; i++) {
-        JsonNode *time_node = json_array_get_element(time_array, i);
-        if (!time_node) {
-            continue;
-        }
-        
-        const gchar *time_str = json_node_get_string(time_node);
-        
-        if (time_str && strlen(time_str) >= 16) {
-            // Ensure we have enough characters: "YYYY-MM-DDTHH:MM" format
-            int hour = atoi(time_str + 11);
-            int minute = 0;
-            if (strlen(time_str) >= 16) {
-                minute = atoi(time_str + 14);
-            }
-            if (hour > current_hour || (hour == current_hour && minute >= tm_info->tm_min)) {
-                start_index = i;
-                break;
+    time_t now = time(NULL);
+    if (now != (time_t)-1) {
+        struct tm *tm_info = localtime(&now);
+        if (tm_info) {
+            int current_hour = tm_info->tm_hour;
+            
+            // Find the first future hour
+            for (guint i = 0; i < array_length; i++) {
+                JsonNode *time_node = json_array_get_element(time_array, i);
+                if (!time_node) {
+                    continue;
+                }
+                
+                const gchar *time_str = json_node_get_string(time_node);
+                
+                if (time_str && strlen(time_str) >= 16) {
+                    // Ensure we have enough characters: "YYYY-MM-DDTHH:MM" format
+                    int hour = atoi(time_str + 11);
+                    int minute = 0;
+                    if (strlen(time_str) >= 16) {
+                        minute = atoi(time_str + 14);
+                    }
+                    if (hour > current_hour || (hour == current_hour && minute >= tm_info->tm_min)) {
+                        start_index = i;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -480,6 +493,7 @@ static gboolean show_weather_error(gpointer user_data) {
     GtkWidget *child;
     while ((child = gtk_widget_get_first_child(data->weather_box))) {
         gtk_box_remove(GTK_BOX(data->weather_box), child);
+        // Widget is automatically unparented and will be destroyed when last reference drops
     }
     
     GtkWidget *error_label = gtk_label_new("Failed to fetch weather");
@@ -493,6 +507,11 @@ static gboolean show_weather_error(gpointer user_data) {
 static void on_weather_response(GObject *source_object, GAsyncResult *res, gpointer user_data) {
     SoupMessage *msg = SOUP_MESSAGE(user_data);
     AppData *data = (AppData *)g_object_get_data(G_OBJECT(msg), "app-data");
+    
+    // Clear pending message reference
+    if (data && data->pending_message == msg) {
+        data->pending_message = NULL;
+    }
     
     if (!data) {
         g_warning("AppData not found in message user data");
@@ -739,6 +758,13 @@ static void fetch_weather(AppData *data) {
         return;
     }
     
+    // Cancel any pending request before starting a new one
+    if (data->pending_message) {
+        soup_session_cancel_message(data->session, data->pending_message, SOUP_STATUS_CANCELLED);
+        g_object_unref(data->pending_message);
+        data->pending_message = NULL;
+    }
+    
     // Get location from entries if available, otherwise use stored values
     const gchar *lat = data->location_lat ? data->location_lat : "52.52";
     const gchar *lon = data->location_lon ? data->location_lon : "13.41";
@@ -783,6 +809,8 @@ static void fetch_weather(AppData *data) {
     
     // Store data pointer in message user_data for callback
     g_object_set_data(G_OBJECT(msg), "app-data", data);
+    data->pending_message = msg;  // Track pending message
+    g_object_ref(msg);  // Keep a reference until callback completes
     soup_session_send_and_read_async(data->session, msg, G_PRIORITY_DEFAULT, NULL, on_weather_response, msg);
 }
 
@@ -897,7 +925,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     
     
     // CSS styling
-    GtkCssProvider *css_provider = gtk_css_provider_new();
+    data->css_provider = gtk_css_provider_new();
     const char *css = 
         "#main-window {"
         "  background-color: #000000;"
@@ -980,17 +1008,17 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "  background-color: #a04850;"
         "}";
     
-    gtk_css_provider_load_from_string(css_provider, css);
+    gtk_css_provider_load_from_string(data->css_provider, css);
     gtk_style_context_add_provider_for_display(gdk_display_get_default(),
-                                               GTK_STYLE_PROVIDER(css_provider),
+                                               GTK_STYLE_PROVIDER(data->css_provider),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     
     // Initialize clock
     update_clock(data);
     
-    // Set up timers
-    g_timeout_add_seconds(1, update_clock_callback, data);
-    g_timeout_add_seconds(UPDATE_INTERVAL_SECONDS, update_weather_callback, data);
+    // Set up timers and track their IDs
+    data->clock_timer_id = g_timeout_add_seconds(1, update_clock_callback, data);
+    data->weather_timer_id = g_timeout_add_seconds(UPDATE_INTERVAL_SECONDS, update_weather_callback, data);
     
     // Fetch initial weather
     fetch_weather(data);
@@ -1064,16 +1092,46 @@ int main(int argc, char *argv[]) {
     
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     
+    // Cleanup: cancel pending HTTP requests
+    if (data->pending_message) {
+        if (data->session) {
+            soup_session_cancel_message(data->session, data->pending_message, SOUP_STATUS_CANCELLED);
+        }
+        g_object_unref(data->pending_message);
+        data->pending_message = NULL;
+    }
+    
+    // Cleanup: remove timer sources
+    if (data->clock_timer_id != 0) {
+        g_source_remove(data->clock_timer_id);
+        data->clock_timer_id = 0;
+    }
+    if (data->weather_timer_id != 0) {
+        g_source_remove(data->weather_timer_id);
+        data->weather_timer_id = 0;
+    }
+    
+    // Cleanup: unref CSS provider
+    if (data->css_provider) {
+        g_object_unref(data->css_provider);
+        data->css_provider = NULL;
+    }
+    
     g_object_unref(app);
     if (data->session) {
         g_object_unref(data->session);
+        data->session = NULL;
     }
     if (data->tz) {
         g_time_zone_unref(data->tz);
+        data->tz = NULL;
     }
     g_free(data->location_lat);
+    data->location_lat = NULL;
     g_free(data->location_lon);
+    data->location_lon = NULL;
     g_free(data->timezone);
+    data->timezone = NULL;
     g_free(data);
     
     return status;
