@@ -68,23 +68,28 @@ static void update_clock(AppData *data) {
         return; // time() failed
     }
     
-    GDateTime *dt;
-    if (data->tz) {
-        // Convert UTC time to the location's timezone
-        // time() returns UTC seconds since epoch
+    GDateTime *dt = NULL;
+    
+    // PRIORITY 1: Use UTC offset (most reliable on Windows deployments)
+    // The utc_offset_seconds comes directly from the weather API and doesn't
+    // depend on having timezone database files installed
+    if (data->utc_offset_seconds != 0) {
+        // Convert UTC time to local by adding the offset
+        // For GMT-5: offset = -18000 seconds, so we subtract 5 hours from UTC
+        time_t adjusted_time = now + data->utc_offset_seconds;
+        dt = g_date_time_new_from_unix_utc(adjusted_time);
+    }
+    // PRIORITY 2: Try GTimeZone object (may not work on Windows without tz database)
+    else if (data->tz) {
         dt = g_date_time_new_from_unix_utc(now);
         if (dt) {
             GDateTime *dt_tz = g_date_time_to_timezone(dt, data->tz);
             g_date_time_unref(dt);
             dt = dt_tz;
         }
-    } else if (data->utc_offset_seconds != 0) {
-        // Fallback: use UTC offset if timezone object creation failed
-        // Add offset to UTC time
-        time_t adjusted_time = now + data->utc_offset_seconds;
-        dt = g_date_time_new_from_unix_utc(adjusted_time);
-    } else {
-        // Fallback to system local time
+    }
+    // PRIORITY 3: Fallback to system local time
+    else {
         dt = g_date_time_new_from_unix_local(now);
     }
     
@@ -206,11 +211,25 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
     // Extract UTC offset as fallback (in seconds)
     if (json_object_has_member(root_obj, "utc_offset_seconds")) {
         JsonNode *offset_node = json_object_get_member(root_obj, "utc_offset_seconds");
-        if (json_node_get_value_type(offset_node) == G_TYPE_INT64) {
+        GType offset_type = json_node_get_value_type(offset_node);
+        
+        // Handle different numeric types the API might return
+        if (offset_type == G_TYPE_INT64) {
             gint64 offset = json_node_get_int(offset_node);
             data->utc_offset_seconds = (gint)offset;
-            g_debug("UTC offset: %d seconds (%+.1f hours)", data->utc_offset_seconds, data->utc_offset_seconds / 3600.0);
+        } else if (offset_type == G_TYPE_DOUBLE) {
+            gdouble offset = json_node_get_double(offset_node);
+            data->utc_offset_seconds = (gint)offset;
+        } else if (JSON_NODE_HOLDS_VALUE(offset_node)) {
+            // Try to get as int anyway
+            data->utc_offset_seconds = (gint)json_node_get_int(offset_node);
         }
+        
+        g_print("UTC offset set: %d seconds (%+.1f hours)\n", 
+                data->utc_offset_seconds, data->utc_offset_seconds / 3600.0);
+        
+        // Save config immediately after getting UTC offset
+        save_location_to_config(data);
     }
     
     // Check for API errors first - Open-Meteo returns "error" as boolean or "reason" as string
@@ -560,6 +579,9 @@ static void save_location_to_config(AppData *data) {
         g_key_file_set_string(key_file, "Location", "timezone", data->timezone);
     }
     
+    // Save UTC offset as fallback (important for deployments without timezone database)
+    g_key_file_set_integer(key_file, "Location", "utc_offset_seconds", data->utc_offset_seconds);
+    
     GError *error = NULL;
     if (!g_key_file_save_to_file(key_file, config_path, &error)) {
         g_warning("Failed to save config: %s", error ? error->message : "Unknown error");
@@ -649,6 +671,17 @@ static void load_location_from_config(AppData *data) {
         g_free(tz);
     }
     
+    if (error) {
+        g_error_free(error);
+        error = NULL;
+    }
+    
+    // Load UTC offset as fallback (critical for deployments without timezone database)
+    gint utc_offset = g_key_file_get_integer(key_file, "Location", "utc_offset_seconds", &error);
+    if (!error) {
+        data->utc_offset_seconds = utc_offset;
+        g_debug("Loaded UTC offset from config: %d seconds", utc_offset);
+    }
     if (error) {
         g_error_free(error);
     }
