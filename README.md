@@ -294,4 +294,6 @@ This application uses the [Open-Meteo API](https://open-meteo.com/), which is:
 
 ## License
 
-This project is open source. Feel free to modify and use as needed. 
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+**Note**: This application uses GTK4 and related libraries (libsoup, json-glib, GLib) which are licensed under LGPL 2.1+. These libraries are dynamically linked and their licenses do not affect the licensing of this application's source code. 
