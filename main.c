@@ -17,6 +17,7 @@
 
 typedef struct {
     GtkWidget *window;
+    GtkWidget *settings_window;     // Settings/preferences window
     GtkWidget *clock_label;
     GtkWidget *date_label;
     GtkWidget *weather_box;
@@ -64,6 +65,19 @@ static const char* get_weather_icon(int code) {
 
 static void update_clock(AppData *data) {
     if (!data || !data->clock_label || !data->date_label) {
+        return;
+    }
+    
+    // Verify widgets are valid GTK objects and actually labels before casting
+    if (!GTK_IS_WIDGET(data->clock_label) || !GTK_IS_WIDGET(data->date_label)) {
+        return;
+    }
+    if (!GTK_IS_LABEL(data->clock_label) || !GTK_IS_LABEL(data->date_label)) {
+        return;
+    }
+    
+    // Ensure widgets are part of widget tree (have parents) before updating
+    if (!gtk_widget_get_parent(data->clock_label) || !gtk_widget_get_parent(data->date_label)) {
         return;
     }
     
@@ -346,17 +360,20 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
     }
     
     guint array_length = json_array_get_length(time_array);
-    guint hours_to_show = (array_length > 6) ? 6 : array_length;
+    const guint hours_to_show = 6;  // Always show 6 hours
     
-    // Get current time to show only future hours
+    // Get current time to find the starting hour
     int start_index = 0;
     time_t now = time(NULL);
     if (now != (time_t)-1) {
         struct tm *tm_info = localtime(&now);
         if (tm_info) {
+            int current_year = tm_info->tm_year + 1900;
+            int current_month = tm_info->tm_mon + 1;
+            int current_day = tm_info->tm_mday;
             int current_hour = tm_info->tm_hour;
             
-            // Find the first future hour
+            // Find the first hour >= current hour (same day or next day)
             for (guint i = 0; i < array_length; i++) {
                 JsonNode *time_node = json_array_get_element(time_array, i);
                 if (!time_node) {
@@ -366,13 +383,31 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
                 const gchar *time_str = json_node_get_string(time_node);
                 
                 if (time_str && strlen(time_str) >= 16) {
-                    // Ensure we have enough characters: "YYYY-MM-DDTHH:MM" format
+                    // Parse date and time: "YYYY-MM-DDTHH:MM" format
+                    int year = atoi(time_str);
+                    int month = atoi(time_str + 5);
+                    int day = atoi(time_str + 8);
                     int hour = atoi(time_str + 11);
-                    int minute = 0;
-                    if (strlen(time_str) >= 16) {
-                        minute = atoi(time_str + 14);
+                    
+                    // Find the current hour (or next hour if we've passed it)
+                    // We want to start from the current hour and show 6 hours total
+                    gboolean is_current_or_future = FALSE;
+                    
+                    if (year > current_year) {
+                        is_current_or_future = TRUE;
+                    } else if (year == current_year && month > current_month) {
+                        is_current_or_future = TRUE;
+                    } else if (year == current_year && month == current_month && day > current_day) {
+                        is_current_or_future = TRUE;
+                    } else if (year == current_year && month == current_month && day == current_day) {
+                        // Same day: start from current hour (hour >= current_hour)
+                        // This ensures we show the current hour even if it's partially passed
+                        if (hour >= current_hour) {
+                            is_current_or_future = TRUE;
+                        }
                     }
-                    if (hour > current_hour || (hour == current_hour && minute >= tm_info->tm_min)) {
+                    
+                    if (is_current_or_future) {
                         start_index = i;
                         break;
                     }
@@ -382,6 +417,7 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
     }
     
     // Create weather display widgets for next 6 hours
+    // Always show exactly 6 hours, even if we need to go into the next day
     for (guint i = 0; i < hours_to_show && (start_index + i) < array_length; i++) {
         guint idx = start_index + i;
         
@@ -753,14 +789,110 @@ static void on_exit_clicked(GtkWidget *widget, gpointer user_data) {
     g_application_quit(G_APPLICATION(app));
 }
 
+// Handle close request from window's close button (X)
+// Hide the window instead of destroying it
+static gboolean on_settings_window_close_request(GtkWindow *window, gpointer user_data) {
+    (void)window;
+    AppData *data = (AppData *)user_data;
+    if (data && data->settings_window) {
+        gtk_widget_set_visible(data->settings_window, FALSE);
+    }
+    return TRUE; // Prevent default close behavior (destruction)
+}
+
+// Toggle settings window visibility
+static void on_settings_toggle(GtkWidget *widget, gpointer user_data) {
+    (void)widget; // Suppress unused parameter warning
+    AppData *data = (AppData *)user_data;
+    if (!data || !data->settings_window) {
+        return;
+    }
+    
+    if (gtk_widget_get_visible(data->settings_window)) {
+        gtk_widget_set_visible(data->settings_window, FALSE);
+    } else {
+        gtk_widget_set_visible(data->settings_window, TRUE);
+        gtk_window_present(GTK_WINDOW(data->settings_window));
+    }
+}
+
+// Create settings window with location inputs
+static void create_settings_window(AppData *data) {
+    if (!data) {
+        return;
+    }
+    
+    // Create settings window
+    data->settings_window = gtk_window_new();
+    gtk_window_set_title(GTK_WINDOW(data->settings_window), "Settings - Weather Clock");
+    gtk_window_set_default_size(GTK_WINDOW(data->settings_window), 500, 200);
+    gtk_window_set_resizable(GTK_WINDOW(data->settings_window), TRUE);
+    gtk_window_set_modal(GTK_WINDOW(data->settings_window), FALSE);
+    gtk_widget_set_name(data->settings_window, "settings-window");
+    
+    // Connect to close-request signal to hide instead of destroy
+    g_signal_connect(data->settings_window, "close-request", 
+                     G_CALLBACK(on_settings_window_close_request), data);
+    
+    // Main container
+    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+    gtk_widget_set_margin_top(main_box, 20);
+    gtk_widget_set_margin_bottom(main_box, 20);
+    gtk_widget_set_margin_start(main_box, 20);
+    gtk_widget_set_margin_end(main_box, 20);
+    gtk_window_set_child(GTK_WINDOW(data->settings_window), main_box);
+    
+    // Title
+    GtkWidget *title_label = gtk_label_new("Location Settings");
+    gtk_widget_add_css_class(title_label, "settings-title");
+    gtk_widget_set_halign(title_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(main_box), title_label);
+    
+    // Location input section
+    GtkWidget *location_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_halign(location_box, GTK_ALIGN_CENTER);
+    gtk_widget_add_css_class(location_box, "location-box");
+    
+    GtkWidget *lat_label = gtk_label_new("Latitude:");
+    data->lat_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(data->lat_entry), "52.52");
+    gtk_editable_set_text(GTK_EDITABLE(data->lat_entry), data->location_lat ? data->location_lat : "");
+    
+    GtkWidget *lon_label = gtk_label_new("Longitude:");
+    data->lon_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(data->lon_entry), "13.41");
+    gtk_editable_set_text(GTK_EDITABLE(data->lon_entry), data->location_lon ? data->location_lon : "");
+    
+    GtkWidget *update_btn = gtk_button_new_with_label("Update Location");
+    g_signal_connect(update_btn, "clicked", G_CALLBACK(on_location_update), data);
+    
+    gtk_box_append(GTK_BOX(location_box), lat_label);
+    gtk_box_append(GTK_BOX(location_box), data->lat_entry);
+    gtk_box_append(GTK_BOX(location_box), lon_label);
+    gtk_box_append(GTK_BOX(location_box), data->lon_entry);
+    gtk_box_append(GTK_BOX(location_box), update_btn);
+    
+    gtk_box_append(GTK_BOX(main_box), location_box);
+    
+    // Close button
+    GtkWidget *close_btn = gtk_button_new_with_label("Close");
+    gtk_widget_set_halign(close_btn, GTK_ALIGN_END);
+    gtk_widget_add_css_class(close_btn, "exit-button");
+    g_signal_connect(close_btn, "clicked", G_CALLBACK(on_settings_toggle), data);
+    gtk_box_append(GTK_BOX(main_box), close_btn);
+    
+    // Initially hide the window
+    gtk_widget_set_visible(data->settings_window, FALSE);
+}
+
 static void fetch_weather(AppData *data) {
     if (!data || !data->session) {
         return;
     }
     
     // Cancel any pending request before starting a new one
+    // In libsoup-3.0, unref'ing a message automatically cancels it
     if (data->pending_message) {
-        soup_session_cancel_message(data->session, data->pending_message, SOUP_STATUS_CANCELLED);
         g_object_unref(data->pending_message);
         data->pending_message = NULL;
     }
@@ -790,8 +922,10 @@ static void fetch_weather(AppData *data) {
     }
     
     char url[512];
+    // Request 2 days to ensure we always have enough data for 6 hours
+    // This is especially important when it's late in the day (e.g., 19:00-23:00 + next day 00:00)
     int url_len = snprintf(url, sizeof(url), 
-             "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=temperature_2m,weathercode&forecast_days=1&timezone=auto",
+             "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&hourly=temperature_2m,weathercode&forecast_days=2&timezone=auto",
              lat, lon);
     
     if (url_len < 0 || url_len >= (int)sizeof(url)) {
@@ -816,14 +950,79 @@ static void fetch_weather(AppData *data) {
 
 static gboolean update_clock_callback(gpointer user_data) {
     AppData *data = (AppData *)user_data;
-    update_clock(data);
+    if (!data) {
+        return G_SOURCE_REMOVE;
+    }
+    // Only update if widgets are valid and part of widget tree
+    if (data->clock_label && data->date_label && 
+        GTK_IS_WIDGET(data->clock_label) && GTK_IS_WIDGET(data->date_label) &&
+        gtk_widget_get_parent(data->clock_label) && gtk_widget_get_parent(data->date_label)) {
+        update_clock(data);
+    }
     return G_SOURCE_CONTINUE;
 }
 
 static gboolean update_weather_callback(gpointer user_data) {
     AppData *data = (AppData *)user_data;
     fetch_weather(data);
-    return G_SOURCE_CONTINUE;
+    
+    // After first refresh, reschedule for every hour
+    // Remove the old timer and create a new one that runs every hour
+    if (data->weather_timer_id != 0) {
+        g_source_remove(data->weather_timer_id);
+        data->weather_timer_id = 0;
+    }
+    
+    // Schedule next refresh for exactly 1 hour from now
+    data->weather_timer_id = g_timeout_add_seconds(UPDATE_INTERVAL_SECONDS, update_weather_callback, data);
+    
+    return G_SOURCE_REMOVE; // Remove the one-time timer
+}
+
+// Calculate seconds until the next top of the hour
+static guint seconds_until_next_hour(void) {
+    time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        return UPDATE_INTERVAL_SECONDS; // Fallback to 1 hour
+    }
+    
+    struct tm *tm_info = localtime(&now);
+    if (!tm_info) {
+        return UPDATE_INTERVAL_SECONDS; // Fallback to 1 hour
+    }
+    
+    // Calculate seconds until next hour
+    int current_minute = tm_info->tm_min;
+    int current_second = tm_info->tm_sec;
+    int seconds_remaining_in_hour = (60 - current_minute) * 60 - current_second;
+    
+    return (guint)seconds_remaining_in_hour;
+}
+
+// Direct callback for realize signal
+static void on_window_realize_fullscreen_direct(GtkWidget *widget, gpointer user_data) {
+    (void)widget;
+    AppData *data = (AppData *)user_data;
+    if (data && data->window) {
+        gtk_window_fullscreen(GTK_WINDOW(data->window));
+    }
+}
+
+// Idle callback to go fullscreen after window is realized
+// This ensures proper scaling on both GNOME and Plasma Wayland
+static gboolean on_window_realize_fullscreen(gpointer user_data) {
+    AppData *data = (AppData *)user_data;
+    if (data && data->window && gtk_widget_get_realized(data->window)) {
+        gtk_window_fullscreen(GTK_WINDOW(data->window));
+        return G_SOURCE_REMOVE;
+    }
+    // If not realized yet, try again (max 10 attempts)
+    static int attempts = 0;
+    if (attempts++ < 10) {
+        return G_SOURCE_CONTINUE;
+    }
+    attempts = 0;
+    return G_SOURCE_REMOVE;
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -832,9 +1031,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // Create main window
     data->window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(data->window), "Weather Clock");
-    gtk_window_set_default_size(GTK_WINDOW(data->window), 800, 600);
-    gtk_window_fullscreen(GTK_WINDOW(data->window));
-
+    
+    // Make window resizable
+    gtk_window_set_resizable(GTK_WINDOW(data->window), TRUE);
+    
     // Set window background to black
     gtk_widget_set_name(data->window, "main-window");
     
@@ -846,13 +1046,31 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_set_margin_end(main_box, 40);
     gtk_window_set_child(GTK_WINDOW(data->window), main_box);
     
-    // Exit button at the top
+    // Ensure the window content scales properly
+    gtk_widget_set_hexpand(main_box, TRUE);
+    gtk_widget_set_vexpand(main_box, TRUE);
+    
+    // Button box at the top (Settings and Exit)
+    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_halign(button_box, GTK_ALIGN_END);
+    gtk_widget_set_margin_bottom(button_box, 10);
+    
+    // Settings button
+    GtkWidget *settings_btn = gtk_button_new_with_label("Settings");
+    gtk_widget_add_css_class(settings_btn, "exit-button");
+    g_signal_connect(settings_btn, "clicked", G_CALLBACK(on_settings_toggle), data);
+    gtk_box_append(GTK_BOX(button_box), settings_btn);
+    
+    // Exit button
     GtkWidget *exit_btn = gtk_button_new_with_label("Exit");
-    gtk_widget_set_halign(exit_btn, GTK_ALIGN_END);
-    gtk_widget_set_margin_bottom(exit_btn, 10);
     gtk_widget_add_css_class(exit_btn, "exit-button");
     g_signal_connect(exit_btn, "clicked", G_CALLBACK(on_exit_clicked), app);
-    gtk_box_append(GTK_BOX(main_box), exit_btn);
+    gtk_box_append(GTK_BOX(button_box), exit_btn);
+    
+    gtk_box_append(GTK_BOX(main_box), button_box);
+    
+    // Create settings window
+    create_settings_window(data);
     
     // Clock section
     GtkWidget *clock_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -870,32 +1088,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_box_append(GTK_BOX(clock_box), data->date_label);
     
     gtk_box_append(GTK_BOX(main_box), clock_box);
-    
-    // Location input section
-    GtkWidget *location_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_halign(location_box, GTK_ALIGN_CENTER);
-    gtk_widget_add_css_class(location_box, "location-box");
-    
-    GtkWidget *lat_label = gtk_label_new("Latitude:");
-    data->lat_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(data->lat_entry), "52.52");
-    gtk_editable_set_text(GTK_EDITABLE(data->lat_entry), data->location_lat ? data->location_lat : "");
-    
-    GtkWidget *lon_label = gtk_label_new("Longitude:");
-    data->lon_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(data->lon_entry), "13.41");
-    gtk_editable_set_text(GTK_EDITABLE(data->lon_entry), data->location_lon ? data->location_lon : "");
-    
-    GtkWidget *update_btn = gtk_button_new_with_label("Update Location");
-    g_signal_connect(update_btn, "clicked", G_CALLBACK(on_location_update), data);
-    
-    gtk_box_append(GTK_BOX(location_box), lat_label);
-    gtk_box_append(GTK_BOX(location_box), data->lat_entry);
-    gtk_box_append(GTK_BOX(location_box), lon_label);
-    gtk_box_append(GTK_BOX(location_box), data->lon_entry);
-    gtk_box_append(GTK_BOX(location_box), update_btn);
-    
-    gtk_box_append(GTK_BOX(main_box), location_box);
     
     // Weather section
     GtkWidget *weather_section = gtk_box_new(GTK_ORIENTATION_VERTICAL, 15);
@@ -934,18 +1126,18 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "  background-color: #000000;"
         "}"
         ".clock-time {"
-        "  font-size: 400px;"
+        "  font-size: 340px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
         "}"
         ".clock-date {"
-        "  font-size: 100px;"
+        "  font-size: 75px;"
         "  color: #ffffff;"
         "}"
         ".weather-section {"
         "  background-color: rgba(20, 20, 20, 0.9);"
         "  border-radius: 15px;"
-        "  padding: 20px;"
+        "  padding: 10px;"
         "}"
         ".weather-title {"
         "  font-size: 28px;"
@@ -968,10 +1160,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "  color: #ffffff;"
         "}"
         ".weather-icon {"
-        "  font-size: 48px;"
+        "  font-size: 40px;"
         "}"
         ".weather-temp {"
-        "  font-size: 72px;"
+        "  font-size: 64px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
         "}"
@@ -1006,6 +1198,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "}"
         ".exit-button:hover {"
         "  background-color: #a04850;"
+        "}"
+        ".settings-title {"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #ffffff;"
+        "  margin-bottom: 15px;"
         "}";
     
     gtk_css_provider_load_from_string(data->css_provider, css);
@@ -1018,12 +1216,26 @@ static void activate(GtkApplication *app, gpointer user_data) {
     
     // Set up timers and track their IDs
     data->clock_timer_id = g_timeout_add_seconds(1, update_clock_callback, data);
-    data->weather_timer_id = g_timeout_add_seconds(UPDATE_INTERVAL_SECONDS, update_weather_callback, data);
+    
+    // Calculate seconds until next top of the hour for weather refresh
+    guint seconds_until_hour = seconds_until_next_hour();
+    
+    // Set up initial weather timer to trigger at the next top of the hour
+    // After that, it will refresh every hour automatically
+    data->weather_timer_id = g_timeout_add_seconds(seconds_until_hour, update_weather_callback, data);
     
     // Fetch initial weather
     fetch_weather(data);
     
+    // Show window first
     gtk_widget_set_visible(data->window, TRUE);
+    
+    // Go fullscreen after window is realized
+    // This ensures GTK4 properly calculates the window size with scaling on both GNOME and Plasma Wayland
+    // Use idle callback to ensure window is fully realized before going fullscreen
+    // Also connect to realize signal as backup
+    g_signal_connect(data->window, "realize", G_CALLBACK(on_window_realize_fullscreen_direct), data);
+    g_idle_add((GSourceFunc)on_window_realize_fullscreen, data);
 }
 
 int main(int argc, char *argv[]) {
@@ -1093,10 +1305,8 @@ int main(int argc, char *argv[]) {
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     
     // Cleanup: cancel pending HTTP requests
+    // In libsoup-3.0, unref'ing a message automatically cancels it
     if (data->pending_message) {
-        if (data->session) {
-            soup_session_cancel_message(data->session, data->pending_message, SOUP_STATUS_CANCELLED);
-        }
         g_object_unref(data->pending_message);
         data->pending_message = NULL;
     }

@@ -32,13 +32,18 @@ echo "Architecture: $CURRENT_ARCH"
 echo ""
 
 # Check for required tools
-for tool in dpkg-buildpackage debhelper; do
-    if ! command -v $tool &> /dev/null; then
-        echo -e "${RED}Error: $tool is not installed${NC}"
-        echo "Install with: sudo apt-get install devscripts debhelper"
-        exit 1
-    fi
-done
+if ! command -v dpkg-buildpackage &> /dev/null; then
+    echo -e "${RED}Error: dpkg-buildpackage is not installed${NC}"
+    echo "Install with: sudo apt-get install devscripts"
+    exit 1
+fi
+
+# Check for dh (provided by debhelper)
+if ! command -v dh &> /dev/null; then
+    echo -e "${RED}Error: debhelper (dh) is not installed${NC}"
+    echo "Install with: sudo apt-get install debhelper"
+    exit 1
+fi
 
 # Check for build dependencies
 echo "Checking build dependencies..."
