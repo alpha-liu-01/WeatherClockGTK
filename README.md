@@ -2,6 +2,8 @@
 
 A GTK4-based clock and weather application designed for repurposed PC-based tablets. Features a large, prominent clock display with hourly weather forecasts below.
 
+![Screenshot](https://i.imgur.com/ZWMw3wZ.png)
+
 ## Features
 
 - **Large Clock Display**: Takes up most of the window with current time and date
