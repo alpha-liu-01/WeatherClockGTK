@@ -14,6 +14,9 @@
 #define WEATHER_API_URL "https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m,weathercode&forecast_days=1"
 #define UPDATE_INTERVAL_SECONDS 3600  // 1 hour in seconds
 #define CONFIG_FILE_NAME "weatherclock.conf"
+#define MAX_RETRY_ATTEMPTS 5          // Maximum number of retry attempts
+#define INITIAL_RETRY_DELAY 30        // Initial retry delay in seconds (30s)
+#define MAX_RETRY_DELAY 600           // Maximum retry delay in seconds (10 minutes)
 
 typedef struct {
     GtkWidget *window;
@@ -28,11 +31,15 @@ typedef struct {
     GtkCssProvider *css_provider;   // Track CSS provider for cleanup
     guint clock_timer_id;           // Track clock update timer
     guint weather_timer_id;         // Track weather update timer
+    guint retry_timer_id;           // Track retry timer
     gchar *location_lat;
     gchar *location_lon;
     gchar *timezone;  // IANA timezone (e.g., "America/Toronto")
     GTimeZone *tz;    // GTimeZone object for time conversion
     gint utc_offset_seconds;  // UTC offset in seconds (fallback if timezone creation fails)
+    gint retry_count;          // Current retry attempt count
+    gint retry_delay;          // Current retry delay in seconds
+    gboolean is_retrying;      // Flag to indicate if we're in retry mode
 } AppData;
 
 // Weather code to description mapping
@@ -160,8 +167,10 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
         g_debug("Full JSON: %s", json_data_str);
     } else {
         gchar *preview = g_strndup(json_data_str, 500);
-        g_debug("JSON preview: %s...", preview);
-        g_free(preview);
+        if (preview) {
+            g_debug("JSON preview: %s...", preview);
+            g_free(preview);
+        }
     }
     
     JsonParser *parser = json_parser_new();
@@ -507,7 +516,11 @@ static gboolean parse_weather_idle(gpointer user_data) {
         return G_SOURCE_REMOVE;
     }
     
-    parse_weather_json(parse_data->json_data, parse_data->data);
+    // Safety check: ensure data and session are still valid
+    if (parse_data->data && parse_data->data->session) {
+        parse_weather_json(parse_data->json_data, parse_data->data);
+    }
+    
     g_free(parse_data->json_data);
     g_free(parse_data);
     return G_SOURCE_REMOVE;
@@ -520,7 +533,13 @@ static gboolean show_weather_error(gpointer user_data) {
     }
     
     AppData *data = error_data->data;
-    if (!data || !data->weather_box) {
+    if (!data || !data->weather_box || !data->session) {
+        g_free(error_data);
+        return G_SOURCE_REMOVE;
+    }
+    
+    // Additional safety: verify weather_box is still a valid widget
+    if (!GTK_IS_WIDGET(data->weather_box)) {
         g_free(error_data);
         return G_SOURCE_REMOVE;
     }
@@ -532,16 +551,35 @@ static gboolean show_weather_error(gpointer user_data) {
         // Widget is automatically unparented and will be destroyed when last reference drops
     }
     
-    GtkWidget *error_label = gtk_label_new("Failed to fetch weather");
+    // Show different message based on retry state
+    gchar *error_msg;
+    if (data->is_retrying) {
+        error_msg = g_strdup_printf("Connection issue - retrying in %d seconds... (attempt %d/%d)", 
+                                    data->retry_delay, data->retry_count + 1, MAX_RETRY_ATTEMPTS);
+    } else {
+        error_msg = g_strdup("Failed to fetch weather - will retry at next scheduled update");
+    }
+    
+    GtkWidget *error_label = gtk_label_new(error_msg);
     gtk_widget_add_css_class(error_label, "error-text");
     gtk_box_append(GTK_BOX(data->weather_box), error_label);
     
+    g_free(error_msg);
     g_free(error_data);
     return G_SOURCE_REMOVE;
 }
 
+// Forward declarations
+static void fetch_weather(AppData *data);
+static gboolean retry_fetch_weather(gpointer user_data);
+
 static void on_weather_response(GObject *source_object, GAsyncResult *res, gpointer user_data) {
     SoupMessage *msg = SOUP_MESSAGE(user_data);
+    if (!msg) {
+        g_warning("Invalid message in weather response callback");
+        return;
+    }
+    
     AppData *data = (AppData *)g_object_get_data(G_OBJECT(msg), "app-data");
     
     // Clear pending message reference
@@ -549,8 +587,8 @@ static void on_weather_response(GObject *source_object, GAsyncResult *res, gpoin
         data->pending_message = NULL;
     }
     
-    if (!data) {
-        g_warning("AppData not found in message user data");
+    if (!data || !data->session) {
+        g_warning("AppData not found or invalid in message user data");
         g_object_unref(msg);
         return;
     }
@@ -559,23 +597,85 @@ static void on_weather_response(GObject *source_object, GAsyncResult *res, gpoin
     GBytes *body_bytes = soup_session_send_and_read_finish(SOUP_SESSION(source_object), res, &error);
     
     if (error) {
-        // Error occurred
-        g_warning("Weather fetch error: %s", error->message);
-        WeatherParseData *error_data = g_new0(WeatherParseData, 1);
-        error_data->data = data;
-        error_data->json_data = NULL; // Signal error
-        g_idle_add(show_weather_error, error_data);
+        // Error occurred - determine if it's retryable
+        g_warning("Weather fetch error: %s (attempt %d/%d)", error->message, data->retry_count + 1, MAX_RETRY_ATTEMPTS);
+        
+        // Check if this is a transient error that should be retried
+        gboolean should_retry = (data->retry_count < MAX_RETRY_ATTEMPTS);
+        
+        if (should_retry) {
+            // Calculate exponential backoff delay: 30s, 60s, 120s, 240s, 480s
+            data->retry_delay = INITIAL_RETRY_DELAY * (1 << data->retry_count);  // 30 * 2^retry_count
+            if (data->retry_delay > MAX_RETRY_DELAY) {
+                data->retry_delay = MAX_RETRY_DELAY;
+            }
+            
+            data->is_retrying = TRUE;
+            
+            // Show error message with retry info
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+            
+            // Schedule retry
+            g_info("Scheduling retry in %d seconds...", data->retry_delay);
+            if (data->retry_timer_id != 0) {
+                g_source_remove(data->retry_timer_id);
+            }
+            data->retry_timer_id = g_timeout_add_seconds(data->retry_delay, retry_fetch_weather, data);
+            
+            data->retry_count++;
+        } else {
+            // Max retries exceeded
+            g_warning("Max retry attempts (%d) exceeded. Will retry at next scheduled update.", MAX_RETRY_ATTEMPTS);
+            data->is_retrying = FALSE;
+            data->retry_count = 0;
+            data->retry_delay = 0;
+            
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+        }
+        
         g_error_free(error);
         g_object_unref(msg);
         return;
     }
     
     if (!body_bytes) {
-        g_warning("No body bytes received");
-        WeatherParseData *error_data = g_new0(WeatherParseData, 1);
-        error_data->data = data;
-        error_data->json_data = NULL;
-        g_idle_add(show_weather_error, error_data);
+        g_warning("No body bytes received (attempt %d/%d)", data->retry_count + 1, MAX_RETRY_ATTEMPTS);
+        
+        // Retry logic for empty response
+        if (data->retry_count < MAX_RETRY_ATTEMPTS) {
+            data->retry_delay = INITIAL_RETRY_DELAY * (1 << data->retry_count);
+            if (data->retry_delay > MAX_RETRY_DELAY) {
+                data->retry_delay = MAX_RETRY_DELAY;
+            }
+            
+            data->is_retrying = TRUE;
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+            
+            if (data->retry_timer_id != 0) {
+                g_source_remove(data->retry_timer_id);
+            }
+            data->retry_timer_id = g_timeout_add_seconds(data->retry_delay, retry_fetch_weather, data);
+            data->retry_count++;
+        } else {
+            data->is_retrying = FALSE;
+            data->retry_count = 0;
+            data->retry_delay = 0;
+            
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+        }
+        
         g_object_unref(msg);
         return;
     }
@@ -584,29 +684,72 @@ static void on_weather_response(GObject *source_object, GAsyncResult *res, gpoin
     gsize length;
     const gchar *response_body = (const gchar *)g_bytes_get_data(body_bytes, &length);
     if (response_body && length > 0) {
+        // Success! Reset retry counters
+        if (data->retry_count > 0) {
+            g_info("Weather fetch succeeded after %d retry attempt(s)", data->retry_count);
+        }
+        data->retry_count = 0;
+        data->retry_delay = 0;
+        data->is_retrying = FALSE;
+        if (data->retry_timer_id != 0) {
+            g_source_remove(data->retry_timer_id);
+            data->retry_timer_id = 0;
+        }
+        
         // Debug: print first 500 chars of response
         gchar *preview = g_strndup(response_body, length > 500 ? 500 : length);
-        g_debug("Weather API response (first 500 chars): %s", preview);
-        g_free(preview);
+        if (preview) {
+            g_debug("Weather API response (first 500 chars): %s", preview);
+            g_free(preview);
+        }
         
         WeatherParseData *parse_data = g_new0(WeatherParseData, 1);
         parse_data->data = data;
         parse_data->json_data = g_strndup(response_body, length);
-        g_idle_add(parse_weather_idle, parse_data);
+        
+        // Check if allocation succeeded
+        if (!parse_data->json_data) {
+            g_warning("Failed to allocate memory for JSON data");
+            g_free(parse_data);
+        } else {
+            g_idle_add(parse_weather_idle, parse_data);
+        }
     } else {
-        g_warning("Empty response body");
-        WeatherParseData *error_data = g_new0(WeatherParseData, 1);
-        error_data->data = data;
-        error_data->json_data = NULL;
-        g_idle_add(show_weather_error, error_data);
+        g_warning("Empty response body (attempt %d/%d)", data->retry_count + 1, MAX_RETRY_ATTEMPTS);
+        
+        // Retry logic for empty body
+        if (data->retry_count < MAX_RETRY_ATTEMPTS) {
+            data->retry_delay = INITIAL_RETRY_DELAY * (1 << data->retry_count);
+            if (data->retry_delay > MAX_RETRY_DELAY) {
+                data->retry_delay = MAX_RETRY_DELAY;
+            }
+            
+            data->is_retrying = TRUE;
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+            
+            if (data->retry_timer_id != 0) {
+                g_source_remove(data->retry_timer_id);
+            }
+            data->retry_timer_id = g_timeout_add_seconds(data->retry_delay, retry_fetch_weather, data);
+            data->retry_count++;
+        } else {
+            data->is_retrying = FALSE;
+            data->retry_count = 0;
+            data->retry_delay = 0;
+            
+            WeatherParseData *error_data = g_new0(WeatherParseData, 1);
+            error_data->data = data;
+            error_data->json_data = NULL;
+            g_idle_add(show_weather_error, error_data);
+        }
     }
     
     g_bytes_unref(body_bytes);
     g_object_unref(msg);
 }
-
-// Forward declarations
-static void fetch_weather(AppData *data);
 
 static gchar* get_config_file_path(void) {
     // Get config directory (user's home directory or current directory)
@@ -779,6 +922,16 @@ static void update_location_from_entries(AppData *data) {
 static void on_location_update(GtkWidget *widget, gpointer user_data) {
     (void)widget; // Suppress unused parameter warning
     AppData *data = (AppData *)user_data;
+    
+    // Reset retry counters when manually updating location
+    data->retry_count = 0;
+    data->retry_delay = 0;
+    data->is_retrying = FALSE;
+    if (data->retry_timer_id != 0) {
+        g_source_remove(data->retry_timer_id);
+        data->retry_timer_id = 0;
+    }
+    
     update_location_from_entries(data);
     fetch_weather(data);
 }
@@ -885,6 +1038,26 @@ static void create_settings_window(AppData *data) {
     gtk_widget_set_visible(data->settings_window, FALSE);
 }
 
+// Retry callback for failed weather fetches
+static gboolean retry_fetch_weather(gpointer user_data) {
+    AppData *data = (AppData *)user_data;
+    if (!data) {
+        return G_SOURCE_REMOVE;
+    }
+    
+    // Safety check: ensure session is still valid (indicates app is still running)
+    if (!data->session) {
+        return G_SOURCE_REMOVE;
+    }
+    
+    g_info("Retrying weather fetch (attempt %d/%d)...", data->retry_count, MAX_RETRY_ATTEMPTS);
+    fetch_weather(data);
+    
+    // Timer is one-shot, remove it
+    data->retry_timer_id = 0;
+    return G_SOURCE_REMOVE;
+}
+
 static void fetch_weather(AppData *data) {
     if (!data || !data->session) {
         return;
@@ -896,6 +1069,18 @@ static void fetch_weather(AppData *data) {
         g_object_unref(data->pending_message);
         data->pending_message = NULL;
     }
+    
+    // Cancel any pending retry timer to avoid duplicate fetches
+    if (data->retry_timer_id != 0) {
+        g_source_remove(data->retry_timer_id);
+        data->retry_timer_id = 0;
+    }
+    
+    // Reset retry state when starting a fresh fetch
+    // This prevents stale retry state from interfering
+    data->retry_count = 0;
+    data->retry_delay = 0;
+    data->is_retrying = FALSE;
     
     // Get location from entries if available, otherwise use stored values
     const gchar *lat = data->location_lat ? data->location_lat : "52.52";
@@ -953,6 +1138,12 @@ static gboolean update_clock_callback(gpointer user_data) {
     if (!data) {
         return G_SOURCE_REMOVE;
     }
+    
+    // Safety check: ensure session is still valid (indicates app is still running)
+    if (!data->session) {
+        return G_SOURCE_REMOVE;
+    }
+    
     // Only update if widgets are valid and part of widget tree
     if (data->clock_label && data->date_label && 
         GTK_IS_WIDGET(data->clock_label) && GTK_IS_WIDGET(data->date_label) &&
@@ -964,6 +1155,15 @@ static gboolean update_clock_callback(gpointer user_data) {
 
 static gboolean update_weather_callback(gpointer user_data) {
     AppData *data = (AppData *)user_data;
+    if (!data) {
+        return G_SOURCE_REMOVE;
+    }
+    
+    // Safety check: ensure session is still valid (indicates app is still running)
+    if (!data->session) {
+        return G_SOURCE_REMOVE;
+    }
+    
     fetch_weather(data);
     
     // After first refresh, reschedule for every hour
@@ -1320,12 +1520,35 @@ int main(int argc, char *argv[]) {
         g_source_remove(data->weather_timer_id);
         data->weather_timer_id = 0;
     }
+    if (data->retry_timer_id != 0) {
+        g_source_remove(data->retry_timer_id);
+        data->retry_timer_id = 0;
+    }
     
     // Cleanup: unref CSS provider
     if (data->css_provider) {
         g_object_unref(data->css_provider);
         data->css_provider = NULL;
     }
+    
+    // Cleanup: destroy settings window if it exists
+    // Windows are managed by GTK but we null out pointers for safety
+    if (data->settings_window) {
+        // Window should already be destroyed by GTK when application quits
+        // but we explicitly null the pointer to prevent use-after-free
+        data->settings_window = NULL;
+    }
+    if (data->window) {
+        data->window = NULL;
+    }
+    
+    // Cleanup: null out widget pointers to prevent use-after-free
+    // These widgets are children of windows and are destroyed automatically
+    data->clock_label = NULL;
+    data->date_label = NULL;
+    data->weather_box = NULL;
+    data->lat_entry = NULL;
+    data->lon_entry = NULL;
     
     g_object_unref(app);
     if (data->session) {

@@ -9,7 +9,8 @@ A GTK4-based clock and weather application designed for repurposed PC-based tabl
 - **Large Clock Display**: Takes up most of the window with current time and date
 - **Hourly Weather Forecast**: Shows the next 6 hours of weather data
 - **Fullscreen Mode**: Optimized for tablet displays
-- **Auto-refresh**: Clock updates every second, weather updates every minute
+- **Auto-refresh**: Clock updates every second, weather updates every hour
+- **Intelligent Retry Logic**: Automatically recovers from network issues with exponential backoff (up to 5 retries)
 - **Cross-platform**: Works on Windows (via MSYS2) and Linux
 
 ## Requirements

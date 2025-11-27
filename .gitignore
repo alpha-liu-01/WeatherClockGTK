@@ -62,3 +62,6 @@ debian/
 
 # Config files
 weatherclock.conf
+
+# Other documents
+docs/
