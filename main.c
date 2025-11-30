@@ -1149,6 +1149,11 @@ static gboolean update_clock_callback(gpointer user_data) {
         GTK_IS_WIDGET(data->clock_label) && GTK_IS_WIDGET(data->date_label) &&
         gtk_widget_get_parent(data->clock_label) && gtk_widget_get_parent(data->date_label)) {
         update_clock(data);
+        // Force widgets to be visible and queue a redraw to ensure rendering
+        gtk_widget_set_visible(data->clock_label, TRUE);
+        gtk_widget_set_visible(data->date_label, TRUE);
+        gtk_widget_queue_draw(data->clock_label);
+        gtk_widget_queue_draw(data->date_label);
     }
     return G_SOURCE_CONTINUE;
 }
@@ -1199,30 +1204,17 @@ static guint seconds_until_next_hour(void) {
     return (guint)seconds_remaining_in_hour;
 }
 
-// Direct callback for realize signal
-static void on_window_realize_fullscreen_direct(GtkWidget *widget, gpointer user_data) {
+// Callback when window is realized - go fullscreen once
+static void on_window_realize_fullscreen(GtkWidget *widget, gpointer user_data) {
     (void)widget;
-    AppData *data = (AppData *)user_data;
-    if (data && data->window) {
-        gtk_window_fullscreen(GTK_WINDOW(data->window));
-    }
-}
-
-// Idle callback to go fullscreen after window is realized
-// This ensures proper scaling on both GNOME and Plasma Wayland
-static gboolean on_window_realize_fullscreen(gpointer user_data) {
     AppData *data = (AppData *)user_data;
     if (data && data->window && gtk_widget_get_realized(data->window)) {
         gtk_window_fullscreen(GTK_WINDOW(data->window));
-        return G_SOURCE_REMOVE;
+        // Force an immediate update of the clock to ensure it's rendered
+        update_clock(data);
+        // Queue a draw to ensure everything is properly rendered
+        gtk_widget_queue_draw(data->window);
     }
-    // If not realized yet, try again (max 10 attempts)
-    static int attempts = 0;
-    if (attempts++ < 10) {
-        return G_SOURCE_CONTINUE;
-    }
-    attempts = 0;
-    return G_SOURCE_REMOVE;
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -1427,15 +1419,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // Fetch initial weather
     fetch_weather(data);
     
-    // Show window first
-    gtk_widget_set_visible(data->window, TRUE);
+    // Connect realize signal to go fullscreen after window is properly created
+    // This ensures GTK4 properly calculates the window size with scaling
+    g_signal_connect(data->window, "realize", G_CALLBACK(on_window_realize_fullscreen), data);
     
-    // Go fullscreen after window is realized
-    // This ensures GTK4 properly calculates the window size with scaling on both GNOME and Plasma Wayland
-    // Use idle callback to ensure window is fully realized before going fullscreen
-    // Also connect to realize signal as backup
-    g_signal_connect(data->window, "realize", G_CALLBACK(on_window_realize_fullscreen_direct), data);
-    g_idle_add((GSourceFunc)on_window_realize_fullscreen, data);
+    // Show window - this will trigger the realize signal
+    gtk_widget_set_visible(data->window, TRUE);
 }
 
 int main(int argc, char *argv[]) {

@@ -50,6 +50,7 @@ cmake_install.cmake
 
 # Deployment
 deploy/
+deploy32/
 dllpack/
 
 # Debian packaging
@@ -65,3 +66,4 @@ weatherclock.conf
 
 # Other documents
 docs/
+weatherclock32/

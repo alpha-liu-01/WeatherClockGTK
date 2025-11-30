@@ -5,14 +5,35 @@ param(
     [switch]$SkipClean,
     [switch]$SkipRun,
     [switch]$Deploy,           # Create deployable package with all DLLs
+    [switch]$x86,              # Build 32-bit version using mingw32 toolchain
     [string]$DeployDir = "deploy",  # Deployment output directory
-    [string]$Compiler = "C:/msys64/clang64/bin/clang.exe",
-    [string]$MSYS2Root = "C:/msys64/clang64"
+    [string]$Compiler = "",
+    [string]$MSYS2Root = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== WeatherClockGTK Build Script ===" -ForegroundColor Cyan
+# Determine toolchain based on -x86 flag
+if ($x86) {
+    if ([string]::IsNullOrEmpty($Compiler)) {
+        $Compiler = "C:/msys64/mingw32/bin/gcc.exe"
+    }
+    if ([string]::IsNullOrEmpty($MSYS2Root)) {
+        $MSYS2Root = "C:/msys64/mingw32"
+    }
+    if ([string]::IsNullOrEmpty($DeployDir) -or $DeployDir -eq "deploy") {
+        $DeployDir = "deploy32"
+    }
+    Write-Host "=== WeatherClockGTK Build Script (32-bit) ===" -ForegroundColor Cyan
+} else {
+    if ([string]::IsNullOrEmpty($Compiler)) {
+        $Compiler = "C:/msys64/clang64/bin/clang.exe"
+    }
+    if ([string]::IsNullOrEmpty($MSYS2Root)) {
+        $MSYS2Root = "C:/msys64/clang64"
+    }
+    Write-Host "=== WeatherClockGTK Build Script (64-bit) ===" -ForegroundColor Cyan
+}
 Write-Host ""
 
 # Get the script directory
@@ -41,9 +62,56 @@ Write-Host ""
 # Step 3: Configure with CMake
 Write-Host "Configuring with CMake..." -ForegroundColor Yellow
 Write-Host "Using compiler: $Compiler" -ForegroundColor Gray
+Write-Host "Using toolchain: $MSYS2Root" -ForegroundColor Gray
+
+# Verify compiler exists
+if (-not (Test-Path $Compiler)) {
+    Write-Host "ERROR: Compiler not found at $Compiler" -ForegroundColor Red
+    Write-Host "Please ensure MSYS2 is installed with the correct toolchain:" -ForegroundColor Yellow
+    if ($x86) {
+        Write-Host "  pacman -S mingw-w64-i686-toolchain mingw-w64-i686-gtk4 mingw-w64-i686-libsoup3 mingw-w64-i686-json-glib mingw-w64-i686-cmake mingw-w64-i686-ninja" -ForegroundColor White
+    } else {
+        Write-Host "  pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-gtk4 mingw-w64-clang-x86_64-libsoup3 mingw-w64-clang-x86_64-json-glib" -ForegroundColor White
+    }
+    exit 1
+}
+
+# Use CMake from the toolchain to ensure compatibility with toolchain binaries
+$CMakePath = Join-Path $MSYS2Root "bin\cmake.exe"
+$CMakePath = $CMakePath -replace '\\', '/'
+if (-not (Test-Path $CMakePath)) {
+    Write-Host "ERROR: CMake not found in toolchain: $CMakePath" -ForegroundColor Red
+    Write-Host "Please install cmake for the target architecture:" -ForegroundColor Yellow
+    if ($x86) {
+        Write-Host "  pacman -S mingw-w64-i686-cmake" -ForegroundColor Cyan
+    } else {
+        Write-Host "  pacman -S mingw-w64-x86_64-cmake" -ForegroundColor Cyan
+    }
+    exit 1
+}
+Write-Host "Using CMake: $CMakePath" -ForegroundColor Gray
+
+# Add the toolchain bin directory to PATH so tools can find their dependencies
+$ToolchainBin = Join-Path $MSYS2Root "bin"
+$MSYS2UsrBin = "C:\msys64\usr\bin"
+$env:PATH = "$ToolchainBin;$MSYS2UsrBin;$env:PATH"
+Write-Host "Added to PATH: $ToolchainBin" -ForegroundColor Gray
+
+# Determine the correct build tool (ninja or make) from the same toolchain
+$MakeProgramParam = @()
+$NinjaPath = Join-Path $MSYS2Root "bin\ninja.exe"
+# Normalize path separators for CMake (forward slashes)
+$NinjaPath = $NinjaPath -replace '\\', '/'
+if (Test-Path $NinjaPath) {
+    $MakeProgramParam = @("-DCMAKE_MAKE_PROGRAM=$NinjaPath")
+    Write-Host "Using build tool: $NinjaPath" -ForegroundColor Gray
+} else {
+    Write-Host "Warning: Ninja not found in toolchain, using default" -ForegroundColor Yellow
+}
 
 try {
-    cmake -DCMAKE_C_COMPILER="$Compiler" ..
+    $CMakeArgs = @("-DCMAKE_C_COMPILER=$Compiler") + $MakeProgramParam + @("..")
+    & $CMakePath @CMakeArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "CMake configuration failed!" -ForegroundColor Red
         exit 1
@@ -58,7 +126,7 @@ Write-Host ""
 # Step 4: Build the project
 Write-Host "Building project..." -ForegroundColor Yellow
 try {
-    cmake --build .
+    & $CMakePath --build .
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build failed!" -ForegroundColor Red
         exit 1
@@ -177,10 +245,11 @@ if ($Deploy) {
             "libjbig-0.dll",
             "libdeflate.dll",
             
-            # SVG support (for icons)
+            # SVG support (for icons and pixbuf loader)
             "librsvg-2-2.dll",
             "libxml2-2.dll",
-            "libgidl-2-0.dll",
+            "libcroco-0.6-3.dll",      # CSS parser for SVG
+            "libgdk_pixbuf-2.0-0.dll", # Already listed above but needed here too
             
             # Compression
             "zlib1.dll",
@@ -195,6 +264,12 @@ if ($Deploy) {
             "libffi-8.dll",
             "libpcre2-8-0.dll",
             
+            # C/C++ runtime (needed by libraries like libLerc)
+            "libstdc++-6.dll",
+            "libgcc_s_dw2-1.dll",      # 32-bit GCC runtime (DW2 exception handling)
+            "libgcc_s_seh-1.dll",      # 64-bit GCC runtime (SEH exception handling)
+            "libwinpthread-1.dll",
+            
             # Network (libsoup)
             "libsoup-3.0-0.dll",
             "libjson-glib-1.0-0.dll",
@@ -202,9 +277,11 @@ if ($Deploy) {
             "libsqlite3-0.dll",
             "libnghttp2-14.dll",
             
-            # TLS/SSL support
-            "libssl-3-x64.dll",
-            "libcrypto-3-x64.dll",
+            # TLS/SSL support (architecture-specific, may not exist for both 32/64-bit)
+            "libssl-3-x64.dll",        # 64-bit OpenSSL
+            "libcrypto-3-x64.dll",     # 64-bit OpenSSL
+            "libssl-3.dll",            # 32-bit OpenSSL (alternative naming)
+            "libcrypto-3.dll",         # 32-bit OpenSSL (alternative naming)
             "libgnutls-30.dll",
             "libhogweed-6.dll",
             "libnettle-8.dll",
@@ -217,6 +294,12 @@ if ($Deploy) {
             # C++ runtime (clang)
             "libc++.dll",
             "libunwind.dll"
+
+            # Other
+            "libdatrie-1.dll",
+            "libgraphite2.dll",
+            "liblzo2-2.dll",
+            "libthai-0.dll"
         )
         
         foreach ($dll in $CommonDlls) {
@@ -227,12 +310,13 @@ if ($Deploy) {
         }
     }
     
-    # Also copy DLLs needed by pixbuf loaders
+    # Also copy DLLs needed by pixbuf loaders (RECURSIVELY)
     Write-Host "Finding pixbuf loader dependencies..." -ForegroundColor Yellow
     $LoadersDir = "$MSYS2Root\lib\gdk-pixbuf-2.0\2.10.0\loaders"
     if (Test-Path $LoadersDir) {
         $loaderDlls = Get-ChildItem "$LoadersDir\*.dll" -ErrorAction SilentlyContinue
         foreach ($loader in $loaderDlls) {
+            Write-Host "  Checking loader: $($loader.Name)" -ForegroundColor Gray
             # Try to find dependencies of each loader
             if (Test-Path $NtlddPath) {
                 $loaderDeps = & $NtlddPath -R $loader.FullName 2>&1
@@ -244,6 +328,7 @@ if ($Deploy) {
                             $dllPath = $dllPath.Trim()
                             if ($dllPath -and (Test-Path $dllPath) -and ($dllPath -like "*msys64*")) {
                                 $DllsToCopy += $dllPath
+                                Write-Host "    Will copy: $(Split-Path -Leaf $dllPath)" -ForegroundColor DarkGray
                             }
                         }
                     }
@@ -286,8 +371,9 @@ if ($Deploy) {
         Copy-Item -Force "$GioSrc\*.dll" $GioDest -ErrorAction SilentlyContinue
         Write-Host "Copied GIO modules" -ForegroundColor Green
         
-        # Find and copy dependencies of GIO modules
+        # Find and copy dependencies of GIO modules RECURSIVELY
         $gioModules = Get-ChildItem "$GioSrc\*.dll" -ErrorAction SilentlyContinue
+        $gioDepsAdded = @{}
         foreach ($module in $gioModules) {
             Write-Host "  Found GIO module: $($module.Name)" -ForegroundColor Gray
             if (Test-Path $NtlddPath) {
@@ -300,10 +386,13 @@ if ($Deploy) {
                             $dllPath = $dllPath.Trim()
                             if ($dllPath -and (Test-Path $dllPath) -and ($dllPath -like "*msys64*")) {
                                 $dllName = Split-Path -Leaf $dllPath
-                                $destPath = Join-Path $DeployPath $dllName
-                                if (-not (Test-Path $destPath)) {
-                                    Copy-Item $dllPath $destPath
-                                    Write-Host "    Copied dependency: $dllName" -ForegroundColor Gray
+                                if (-not $gioDepsAdded.ContainsKey($dllName)) {
+                                    $destPath = Join-Path $DeployPath $dllName
+                                    if (-not (Test-Path $destPath)) {
+                                        Copy-Item $dllPath $destPath
+                                        Write-Host "    Copied dependency: $dllName" -ForegroundColor Gray
+                                    }
+                                    $gioDepsAdded[$dllName] = $true
                                 }
                             }
                         }
@@ -487,8 +576,10 @@ Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Usage examples:" -ForegroundColor Gray
-Write-Host "  .\build.ps1                    # Build and run" -ForegroundColor Gray
-Write-Host "  .\build.ps1 -SkipRun           # Build only" -ForegroundColor Gray
-Write-Host "  .\build.ps1 -Deploy            # Build and create deployment package" -ForegroundColor Gray
+Write-Host "  .\build.ps1                    # Build and run (64-bit)" -ForegroundColor Gray
+Write-Host "  .\build.ps1 -SkipRun           # Build only (64-bit)" -ForegroundColor Gray
+Write-Host "  .\build.ps1 -Deploy            # Build and create deployment package (64-bit)" -ForegroundColor Gray
+Write-Host "  .\build.ps1 -x86               # Build and run (32-bit)" -ForegroundColor Gray
+Write-Host "  .\build.ps1 -x86 -Deploy       # Build and create deployment package (32-bit)" -ForegroundColor Gray
 Write-Host "  .\build.ps1 -Deploy -SkipClean # Deploy without cleaning" -ForegroundColor Gray
 

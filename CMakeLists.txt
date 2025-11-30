@@ -1,31 +1,37 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Set compiler before project() to ensure it's used
-# For MSYS2 clang64, explicitly set the compiler path
+# For MSYS2, support different toolchains (clang64, mingw32, mingw64, etc.)
 if(WIN32)
-    # Always try to use clang64 compiler
-    find_program(CLANG_COMPILER
-        NAMES clang.exe clang
-        PATHS
-            C:/msys64/clang64/bin
-            /clang64/bin
-            ENV PATH
-    )
-    if(CLANG_COMPILER)
-        set(CMAKE_C_COMPILER "${CLANG_COMPILER}" CACHE FILEPATH "C compiler" FORCE)
-        message(STATUS "Using Clang compiler: ${CMAKE_C_COMPILER}")
-    else()
-        message(WARNING "Clang compiler not found. You may need to specify it manually:")
-        message(WARNING "  cmake -DCMAKE_C_COMPILER=C:/msys64/clang64/bin/clang.exe ..")
+    # If no compiler specified, try to find one
+    if(NOT CMAKE_C_COMPILER)
+        find_program(CLANG_COMPILER
+            NAMES clang.exe clang
+            PATHS
+                C:/msys64/clang64/bin
+                /clang64/bin
+                ENV PATH
+        )
+        if(CLANG_COMPILER)
+            set(CMAKE_C_COMPILER "${CLANG_COMPILER}" CACHE FILEPATH "C compiler" FORCE)
+            message(STATUS "Using Clang compiler: ${CMAKE_C_COMPILER}")
+        else()
+            message(WARNING "Clang compiler not found. You may need to specify it manually:")
+            message(WARNING "  cmake -DCMAKE_C_COMPILER=C:/msys64/clang64/bin/clang.exe ..")
+        endif()
     endif()
-endif()
-
-# Set PKG_CONFIG_PATH for clang64 packages on Windows
-if(WIN32)
-    set(CLANG64_PKG_CONFIG_PATH "C:/msys64/clang64/lib/pkgconfig")
-    if(EXISTS "${CLANG64_PKG_CONFIG_PATH}")
-        set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH};${CLANG64_PKG_CONFIG_PATH}")
-        message(STATUS "Added clang64 pkg-config path: ${CLANG64_PKG_CONFIG_PATH}")
+    
+    # Detect toolchain from compiler path and set PKG_CONFIG_PATH accordingly
+    if(CMAKE_C_COMPILER)
+        get_filename_component(COMPILER_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+        get_filename_component(TOOLCHAIN_ROOT "${COMPILER_DIR}" DIRECTORY)
+        
+        set(TOOLCHAIN_PKG_CONFIG_PATH "${TOOLCHAIN_ROOT}/lib/pkgconfig")
+        if(EXISTS "${TOOLCHAIN_PKG_CONFIG_PATH}")
+            set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH};${TOOLCHAIN_PKG_CONFIG_PATH}")
+            message(STATUS "Detected MSYS2 toolchain: ${TOOLCHAIN_ROOT}")
+            message(STATUS "Added pkg-config path: ${TOOLCHAIN_PKG_CONFIG_PATH}")
+        endif()
     endif()
 endif()
 
