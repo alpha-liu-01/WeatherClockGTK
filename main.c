@@ -1050,11 +1050,12 @@ static gboolean retry_fetch_weather(gpointer user_data) {
         return G_SOURCE_REMOVE;
     }
     
-    g_info("Retrying weather fetch (attempt %d/%d)...", data->retry_count, MAX_RETRY_ATTEMPTS);
+    // Timer has fired, clear the ID before calling fetch
+    data->retry_timer_id = 0;
+    
+    g_info("Retrying weather fetch (attempt %d/%d)...", data->retry_count + 1, MAX_RETRY_ATTEMPTS);
     fetch_weather(data);
     
-    // Timer is one-shot, remove it
-    data->retry_timer_id = 0;
     return G_SOURCE_REMOVE;
 }
 
@@ -1070,17 +1071,19 @@ static void fetch_weather(AppData *data) {
         data->pending_message = NULL;
     }
     
-    // Cancel any pending retry timer to avoid duplicate fetches
-    if (data->retry_timer_id != 0) {
-        g_source_remove(data->retry_timer_id);
-        data->retry_timer_id = 0;
+    // Only reset retry state if this is a FRESH fetch, not a retry
+    // The is_retrying flag is set by on_weather_response() when scheduling a retry
+    if (!data->is_retrying) {
+        // Cancel any pending retry timer to avoid duplicate fetches
+        if (data->retry_timer_id != 0) {
+            g_source_remove(data->retry_timer_id);
+            data->retry_timer_id = 0;
+        }
+        
+        // Reset retry state for fresh fetches
+        data->retry_count = 0;
+        data->retry_delay = 0;
     }
-    
-    // Reset retry state when starting a fresh fetch
-    // This prevents stale retry state from interfering
-    data->retry_count = 0;
-    data->retry_delay = 0;
-    data->is_retrying = FALSE;
     
     // Get location from entries if available, otherwise use stored values
     const gchar *lat = data->location_lat ? data->location_lat : "52.52";
