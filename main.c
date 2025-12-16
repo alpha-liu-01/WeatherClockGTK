@@ -225,13 +225,15 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
                 data->tz = g_time_zone_new(tz_str);
                 G_GNUC_END_IGNORE_DEPRECATIONS
                 if (!data->tz) {
-                    g_debug("Failed to create timezone for: %s, will use UTC offset if available", tz_str);
+                    // This is expected on Windows - IANA timezone database is not available
+                    // The UTC offset fallback will be used instead (which is equally accurate)
+                    g_debug("Timezone '%s' not available (normal on Windows), using UTC offset", tz_str);
                 } else {
-                    g_debug("Set timezone to: %s (using deprecated API)", tz_str);
+                    g_info("Using timezone: %s", tz_str);
                     save_location_to_config(data);
                 }
             } else {
-                g_debug("Set timezone to: %s", tz_str);
+                g_info("Using timezone: %s", tz_str);
                 // Save timezone to config
                 save_location_to_config(data);
             }
@@ -243,23 +245,37 @@ static void parse_weather_json(const char *json_data_str, AppData *data) {
         JsonNode *offset_node = json_object_get_member(root_obj, "utc_offset_seconds");
         GType offset_type = json_node_get_value_type(offset_node);
         
+        gint new_offset = 0;
         // Handle different numeric types the API might return
         if (offset_type == G_TYPE_INT64) {
             gint64 offset = json_node_get_int(offset_node);
-            data->utc_offset_seconds = (gint)offset;
+            new_offset = (gint)offset;
         } else if (offset_type == G_TYPE_DOUBLE) {
             gdouble offset = json_node_get_double(offset_node);
-            data->utc_offset_seconds = (gint)offset;
+            new_offset = (gint)offset;
         } else if (JSON_NODE_HOLDS_VALUE(offset_node)) {
             // Try to get as int anyway
-            data->utc_offset_seconds = (gint)json_node_get_int(offset_node);
+            new_offset = (gint)json_node_get_int(offset_node);
         }
         
-        g_print("UTC offset set: %d seconds (%+.1f hours)\n", 
-                data->utc_offset_seconds, data->utc_offset_seconds / 3600.0);
-        
-        // Save config immediately after getting UTC offset
-        save_location_to_config(data);
+        // Only log and save if the offset changed (e.g., DST transition)
+        if (new_offset != data->utc_offset_seconds) {
+            gint old_offset = data->utc_offset_seconds;
+            data->utc_offset_seconds = new_offset;
+            
+            if (old_offset == 0) {
+                // First time setting offset
+                g_info("UTC offset: %+.1f hours (timezone database not available, using offset)", 
+                       new_offset / 3600.0);
+            } else {
+                // Offset changed (likely DST transition)
+                g_info("UTC offset changed: %+.1f → %+.1f hours (DST transition?)", 
+                       old_offset / 3600.0, new_offset / 3600.0);
+            }
+            
+            // Save config when offset changes
+            save_location_to_config(data);
+        }
     }
     
     // Check for API errors first - Open-Meteo returns "error" as boolean or "reason" as string
