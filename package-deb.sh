@@ -12,7 +12,7 @@ NC='\033[0m'
 
 # Configuration
 PACKAGE_NAME="weatherclockgtk"
-VERSION="1.0.0"
+VERSION="1.2.0"
 MAINTAINER="WeatherClockGTK Maintainer <maintainer@example.com>"
 DESCRIPTION="GTK4-based clock and weather application for repurposed tablets"
 ARCHITECTURES="amd64 arm64"

@@ -35,7 +35,7 @@ if(WIN32)
     endif()
 endif()
 
-project(WeatherClockGTK VERSION 1.0.0 LANGUAGES C)
+project(WeatherClockGTK VERSION 1.2.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
