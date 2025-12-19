@@ -1074,7 +1074,7 @@ static void create_settings_window(AppData *data) {
     // Create settings window
     data->settings_window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(data->settings_window), "Settings - Weather Clock");
-    gtk_window_set_default_size(GTK_WINDOW(data->settings_window), 500, 200);
+    gtk_window_set_default_size(GTK_WINDOW(data->settings_window), 450, 160);
     gtk_window_set_resizable(GTK_WINDOW(data->settings_window), TRUE);
     gtk_window_set_modal(GTK_WINDOW(data->settings_window), FALSE);
     gtk_widget_set_name(data->settings_window, "settings-window");
@@ -1083,12 +1083,12 @@ static void create_settings_window(AppData *data) {
     g_signal_connect(data->settings_window, "close-request", 
                      G_CALLBACK(on_settings_window_close_request), data);
     
-    // Main container
-    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
-    gtk_widget_set_margin_top(main_box, 20);
-    gtk_widget_set_margin_bottom(main_box, 20);
-    gtk_widget_set_margin_start(main_box, 20);
-    gtk_widget_set_margin_end(main_box, 20);
+    // Main container - compact padding
+    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    gtk_widget_set_margin_top(main_box, 15);
+    gtk_widget_set_margin_bottom(main_box, 15);
+    gtk_widget_set_margin_start(main_box, 15);
+    gtk_widget_set_margin_end(main_box, 15);
     gtk_window_set_child(GTK_WINDOW(data->settings_window), main_box);
     
     // Title
@@ -1329,12 +1329,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // Set window background to black
     gtk_widget_set_name(data->window, "main-window");
     
-    // Main container
-    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
-    gtk_widget_set_margin_top(main_box, 40);
-    gtk_widget_set_margin_bottom(main_box, 40);
-    gtk_widget_set_margin_start(main_box, 40);
-    gtk_widget_set_margin_end(main_box, 40);
+    // Main container - reduced margins for smaller screens
+    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_widget_set_margin_top(main_box, 20);
+    gtk_widget_set_margin_bottom(main_box, 20);
+    gtk_widget_set_margin_start(main_box, 20);
+    gtk_widget_set_margin_end(main_box, 20);
     gtk_window_set_child(GTK_WINDOW(data->window), main_box);
     
     // Ensure the window content scales properly
@@ -1342,9 +1342,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_set_vexpand(main_box, TRUE);
     
     // Button box at the top (Settings and Exit)
-    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_halign(button_box, GTK_ALIGN_END);
-    gtk_widget_set_margin_bottom(button_box, 10);
+    gtk_widget_set_margin_bottom(button_box, 5);
     
     // Settings button
     GtkWidget *settings_btn = gtk_button_new_with_label("Settings");
@@ -1363,8 +1363,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // Create settings window
     create_settings_window(data);
     
-    // Clock section
-    GtkWidget *clock_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    // Clock section - reduced spacing for compact layout
+    GtkWidget *clock_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_halign(clock_box, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(clock_box, GTK_ALIGN_CENTER);
     gtk_widget_set_vexpand(clock_box, TRUE);
@@ -1380,8 +1380,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
     
     gtk_box_append(GTK_BOX(main_box), clock_box);
     
-    // Weather section
-    GtkWidget *weather_section = gtk_box_new(GTK_ORIENTATION_VERTICAL, 15);
+    // Weather section - compact spacing
+    GtkWidget *weather_section = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_add_css_class(weather_section, "weather-section");
     
     GtkWidget *weather_title = gtk_label_new("Hourly Weather Forecast");
@@ -1393,7 +1393,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), 
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
     
-    data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
+    data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_add_css_class(data->weather_box, "weather-container");
 
     gtk_widget_set_halign(data->weather_box, GTK_ALIGN_CENTER);
@@ -1407,7 +1407,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_box_append(GTK_BOX(main_box), weather_section);
     
     
-    // CSS styling
+    // CSS styling - sizes optimized for 1080p baseline, scales reasonably to 720p-4K
     data->css_provider = gtk_css_provider_new();
     const char *css = 
         "#main-window {"
@@ -1416,85 +1416,95 @@ static void activate(GtkApplication *app, gpointer user_data) {
         "window {"
         "  background-color: #000000;"
         "}"
+        /* Clock: 140px works on 720p (~19% height), looks good up to 4K */
         ".clock-time {"
-        "  font-size: 340px;"
+        "  font-size: 140px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
+        "  letter-spacing: -4px;"  /* Tighter spacing for compactness */
         "}"
         ".clock-date {"
-        "  font-size: 75px;"
-        "  color: #ffffff;"
+        "  font-size: 36px;"
+        "  color: #cccccc;"
+        "  margin-top: 5px;"
         "}"
+        /* Weather section - compact design */
         ".weather-section {"
-        "  background-color: rgba(20, 20, 20, 0.9);"
-        "  border-radius: 15px;"
-        "  padding: 10px;"
+        "  background-color: rgba(20, 20, 20, 0.85);"
+        "  border-radius: 12px;"
+        "  padding: 8px 12px;"
         "}"
         ".weather-title {"
-        "  font-size: 28px;"
+        "  font-size: 20px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
-        "  margin-bottom: 10px;"
+        "  margin-bottom: 6px;"
         "}"
         ".weather-container {"
-        "  padding: 10px;"
+        "  padding: 4px;"
         "}"
         ".weather-hour {"
-        "  background-color: rgba(40, 40, 40, 0.9);"
-        "  border-radius: 10px;"
-        "  padding: 15px;"
-        "  margin: 5px;"
+        "  background-color: rgba(50, 50, 50, 0.8);"
+        "  border-radius: 8px;"
+        "  padding: 8px 12px;"
+        "  margin: 3px;"
+        "  min-width: 80px;"
         "}"
         ".weather-time {"
-        "  font-size: 36px;"
+        "  font-size: 18px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
         "}"
         ".weather-icon {"
-        "  font-size: 40px;"
+        "  font-size: 28px;"
+        "  margin: 4px 0;"
         "}"
         ".weather-temp {"
-        "  font-size: 64px;"
+        "  font-size: 32px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
         "}"
         ".weather-desc {"
-        "  font-size: 14px;"
-        "  color: #cccccc;"
+        "  font-size: 11px;"
+        "  color: #aaaaaa;"
         "}"
         ".error-text {"
         "  color: #ff6b6b;"
-        "  font-size: 18px;"
-        "}"
-        ".location-box {"
+        "  font-size: 14px;"
         "  padding: 10px;"
-        "  margin-bottom: 10px;"
+        "}"
+        /* Settings dialog */
+        ".location-box {"
+        "  padding: 8px;"
+        "  margin-bottom: 8px;"
         "}"
         ".location-box label {"
-        "  margin: 0 5px;"
+        "  margin: 0 4px;"
         "  color: #ffffff;"
+        "  font-size: 14px;"
         "}"
         ".location-box entry {"
-        "  min-width: 100px;"
-        "  margin: 0 10px;"
+        "  min-width: 90px;"
+        "  margin: 0 8px;"
+        "  padding: 4px 8px;"
         "  background-color: #1a1a1a;"
         "  color: #ffffff;"
         "}"
         ".exit-button {"
-        "  padding: 10px 20px;"
-        "  font-size: 16px;"
+        "  padding: 6px 14px;"
+        "  font-size: 13px;"
         "  background-color: #bf616a;"
         "  color: #000000;"
-        "  border-radius: 5px;"
+        "  border-radius: 4px;"
         "}"
         ".exit-button:hover {"
         "  background-color: #a04850;"
         "}"
         ".settings-title {"
-        "  font-size: 24px;"
+        "  font-size: 20px;"
         "  font-weight: bold;"
         "  color: #ffffff;"
-        "  margin-bottom: 15px;"
+        "  margin-bottom: 12px;"
         "}";
     
     gtk_css_provider_load_from_string(data->css_provider, css);
