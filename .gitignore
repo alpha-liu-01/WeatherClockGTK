@@ -67,3 +67,4 @@ weatherclock.conf
 # Other documents
 docs/
 weatherclock32/
+.cursor/

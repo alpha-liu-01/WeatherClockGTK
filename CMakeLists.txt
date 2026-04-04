@@ -53,7 +53,11 @@ pkg_check_modules(JSON_GLIB REQUIRED json-glib-1.0)
 
 # Source files
 set(SOURCES
-    main.c
+    src/main.c
+    src/clock.c
+    src/weather.c
+    src/config.c
+    src/ui.c
 )
 
 # Create executable
@@ -61,6 +65,7 @@ add_executable(weatherclock ${SOURCES})
 
 # Include directories
 target_include_directories(weatherclock PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
     ${GTK4_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
     ${JSON_GLIB_INCLUDE_DIRS}
