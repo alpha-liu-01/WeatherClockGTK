@@ -4,6 +4,86 @@
 #include "weather.h"
 #include "config.h"
 
+#define WEATHER_BOX_SPACING 8
+#define WEATHER_SECTION_PADDING 24
+#define WEATHER_COMPACT_THRESHOLD 130
+#define WEATHER_ULTRA_COMPACT_THRESHOLD 95
+
+static void set_weather_container_class(AppData *data, const char *class_name, gboolean enable) {
+    if (!data || !data->weather_box) {
+        return;
+    }
+
+    gboolean has_class = gtk_widget_has_css_class(data->weather_box, class_name);
+    if (enable && !has_class) {
+        gtk_widget_add_css_class(data->weather_box, class_name);
+    } else if (!enable && has_class) {
+        gtk_widget_remove_css_class(data->weather_box, class_name);
+    }
+}
+
+static int weather_row_width(AppData *data) {
+    int box_width = gtk_widget_get_width(data->weather_box);
+    if (box_width > 0) {
+        return box_width;
+    }
+
+    int scrolled_width = gtk_widget_get_width(data->weather_scrolled);
+    if (scrolled_width <= 0) {
+        return 0;
+    }
+
+    int usable = scrolled_width - WEATHER_SECTION_PADDING;
+    return usable > 0 ? usable : scrolled_width;
+}
+
+void weather_layout_update(AppData *data) {
+    if (!data || !data->weather_scrolled || !data->weather_box) {
+        return;
+    }
+
+    int row_width = weather_row_width(data);
+    if (row_width <= 0) {
+        return;
+    }
+
+    int per_column = (row_width - WEATHER_BOX_SPACING * (WEATHER_HOUR_COUNT - 1)) / WEATHER_HOUR_COUNT;
+    if (per_column < 0) {
+        per_column = 0;
+    }
+
+    gboolean want_compact = per_column < WEATHER_COMPACT_THRESHOLD;
+    gboolean want_ultra = per_column < WEATHER_ULTRA_COMPACT_THRESHOLD;
+
+    gboolean had_compact = gtk_widget_has_css_class(data->weather_box, "weather-compact");
+    gboolean had_ultra = gtk_widget_has_css_class(data->weather_box, "weather-ultra-compact");
+
+    set_weather_container_class(data, "weather-compact", want_compact);
+    set_weather_container_class(data, "weather-ultra-compact", want_ultra);
+
+    if (had_compact != want_compact || had_ultra != want_ultra) {
+        gtk_widget_queue_resize(data->weather_box);
+    }
+}
+
+static gboolean weather_layout_update_idle(gpointer user_data) {
+    weather_layout_update((AppData *)user_data);
+    return G_SOURCE_REMOVE;
+}
+
+void weather_layout_update_later(AppData *data) {
+    if (!data) {
+        return;
+    }
+    g_idle_add(weather_layout_update_idle, data);
+}
+
+static void on_weather_scrolled_notify_width(GObject *object, GParamSpec *pspec, gpointer user_data) {
+    (void)object;
+    (void)pspec;
+    g_idle_add(weather_layout_update_idle, user_data);
+}
+
 static void on_location_update(GtkWidget *widget, gpointer user_data) {
     (void)widget;
     AppData *data = (AppData *)user_data;
@@ -216,6 +296,7 @@ static void on_window_realize_fullscreen(GtkWidget *widget, gpointer user_data) 
     if (data && data->window && gtk_widget_get_realized(data->window)) {
         gtk_window_fullscreen(GTK_WINDOW(data->window));
         update_clock(data);
+        weather_layout_update_later(data);
         gtk_widget_queue_draw(data->window);
     }
 }
@@ -278,23 +359,36 @@ void activate(GtkApplication *app, gpointer user_data) {
     /* Weather section */
     GtkWidget *weather_section = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_add_css_class(weather_section, "weather-section");
+    gtk_widget_set_vexpand(weather_section, FALSE);
 
     data->weather_title_label = gtk_label_new(i18n_(data, I18N_WEATHER_FORECAST_TITLE));
     gtk_widget_add_css_class(data->weather_title_label, "weather-title");
     gtk_box_append(GTK_BOX(weather_section), data->weather_title_label);
 
-    GtkWidget *scrolled = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
+    data->weather_scrolled = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(data->weather_scrolled),
+                                   GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(data->weather_scrolled),
+                                                    FALSE);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(data->weather_scrolled),
+                                                     FALSE);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(data->weather_scrolled), 160);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(data->weather_scrolled), 200);
+    gtk_widget_set_hexpand(data->weather_scrolled, TRUE);
+    gtk_widget_set_vexpand(data->weather_scrolled, FALSE);
 
-    data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    data->weather_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, WEATHER_BOX_SPACING);
     gtk_widget_add_css_class(data->weather_box, "weather-container");
-    gtk_widget_set_halign(data->weather_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(data->weather_box, GTK_ALIGN_FILL);
+    gtk_widget_set_hexpand(data->weather_box, TRUE);
     gtk_box_set_homogeneous(GTK_BOX(data->weather_box), TRUE);
 
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), data->weather_box);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(data->weather_scrolled), data->weather_box);
 
-    gtk_box_append(GTK_BOX(weather_section), scrolled);
+    g_signal_connect(data->weather_scrolled, "notify::width",
+                     G_CALLBACK(on_weather_scrolled_notify_width), data);
+
+    gtk_box_append(GTK_BOX(weather_section), data->weather_scrolled);
     gtk_box_append(GTK_BOX(main_box), weather_section);
 
     /* Load CSS */
@@ -317,4 +411,5 @@ void activate(GtkApplication *app, gpointer user_data) {
     g_signal_connect(data->window, "realize", G_CALLBACK(on_window_realize_fullscreen), data);
 
     gtk_widget_set_visible(data->window, TRUE);
+    g_idle_add(weather_layout_update_idle, data);
 }

@@ -1,6 +1,7 @@
 #include "weather.h"
 #include "config.h"
 #include "i18n.h"
+#include "ui.h"
 
 typedef struct {
     AppData *data;
@@ -8,6 +9,20 @@ typedef struct {
 } WeatherParseData;
 
 static gboolean retry_fetch_weather(gpointer user_data);
+
+static void setup_weather_label(GtkWidget *label, gboolean wrap_text) {
+    gtk_widget_set_hexpand(label, TRUE);
+    gtk_widget_set_halign(label, GTK_ALIGN_FILL);
+    gtk_label_set_xalign(GTK_LABEL(label), 0.5);
+    if (wrap_text) {
+        gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+        gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
+        gtk_label_set_lines(GTK_LABEL(label), 2);
+        gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+    } else {
+        gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+    }
+}
 
 const char *get_weather_description(int code, AppLanguage lang) {
     I18nId id = I18N_WEATHER_UNKNOWN;
@@ -284,7 +299,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
     }
 
     guint array_length = json_array_get_length(time_array);
-    const guint hours_to_show = 6;
+    const guint hours_to_show = WEATHER_HOUR_COUNT;
 
     int start_index = 0;
     time_t now = time(NULL);
@@ -367,6 +382,8 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
         GtkWidget *hour_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_widget_add_css_class(hour_box, "weather-hour");
+        gtk_widget_set_hexpand(hour_box, TRUE);
+        gtk_widget_set_halign(hour_box, GTK_ALIGN_FILL);
 
         char hour_str[8];
         if (time_str && strlen(time_str) >= 13) {
@@ -379,11 +396,12 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
         GtkWidget *time_label = gtk_label_new(hour_str);
         gtk_widget_add_css_class(time_label, "weather-time");
+        setup_weather_label(time_label, FALSE);
         gtk_box_append(GTK_BOX(hour_box), time_label);
 
         GtkWidget *icon_label = gtk_label_new(get_weather_icon((int)code));
         gtk_widget_add_css_class(icon_label, "weather-icon");
-        gtk_label_set_xalign(GTK_LABEL(icon_label), 0.5);
+        setup_weather_label(icon_label, FALSE);
         gtk_box_append(GTK_BOX(hour_box), icon_label);
 
         char temp_str[32];
@@ -394,14 +412,18 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
         }
         GtkWidget *temp_label = gtk_label_new(temp_str);
         gtk_widget_add_css_class(temp_label, "weather-temp");
+        setup_weather_label(temp_label, FALSE);
         gtk_box_append(GTK_BOX(hour_box), temp_label);
 
         GtkWidget *desc_label = gtk_label_new(get_weather_description((int)code, data->language));
         gtk_widget_add_css_class(desc_label, "weather-desc");
+        setup_weather_label(desc_label, TRUE);
         gtk_box_append(GTK_BOX(hour_box), desc_label);
 
         gtk_box_append(GTK_BOX(data->weather_box), hour_box);
     }
+
+    weather_layout_update_later(data);
 
     g_object_unref(parser);
     return TRUE;

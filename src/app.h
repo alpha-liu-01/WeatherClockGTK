@@ -21,6 +21,7 @@
 #define MAX_RETRY_ATTEMPTS 5
 #define INITIAL_RETRY_DELAY 30
 #define MAX_RETRY_DELAY 600
+#define WEATHER_HOUR_COUNT 6
 
 typedef struct {
     GtkWidget *window;
@@ -28,6 +29,7 @@ typedef struct {
     GtkWidget *clock_label;
     GtkWidget *date_label;
     GtkWidget *weather_box;
+    GtkWidget *weather_scrolled;
     GtkWidget *lat_entry;
     GtkWidget *lon_entry;
     GtkWidget *language_dropdown;

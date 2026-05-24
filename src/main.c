@@ -101,6 +101,7 @@ int main(int argc, char *argv[]) {
     data->clock_label = NULL;
     data->date_label = NULL;
     data->weather_box = NULL;
+    data->weather_scrolled = NULL;
     data->lat_entry = NULL;
     data->lon_entry = NULL;
 
