@@ -19,6 +19,17 @@ void save_location_to_config(AppData *data) {
     }
 
     GKeyFile *key_file = g_key_file_new();
+    if (g_file_test(config_path, G_FILE_TEST_EXISTS)) {
+        GError *load_error = NULL;
+        if (!g_key_file_load_from_file(key_file, config_path, G_KEY_FILE_NONE, &load_error)) {
+            g_warning("Failed to load config for location save: %s",
+                      load_error ? load_error->message : "Unknown error");
+            if (load_error) {
+                g_error_free(load_error);
+            }
+        }
+    }
+
     g_key_file_set_string(key_file, "Location", "latitude", data->location_lat);
     g_key_file_set_string(key_file, "Location", "longitude", data->location_lon);
     if (data->timezone) {
@@ -26,6 +37,7 @@ void save_location_to_config(AppData *data) {
     }
 
     g_key_file_set_integer(key_file, "Location", "utc_offset_seconds", data->utc_offset_seconds);
+    g_key_file_set_string(key_file, "General", "language", app_language_to_string(data->language));
 
     GError *error = NULL;
     if (!g_key_file_save_to_file(key_file, config_path, &error)) {
@@ -122,6 +134,83 @@ void load_location_from_config(AppData *data) {
     if (!error) {
         data->utc_offset_seconds = utc_offset;
         g_debug("Loaded UTC offset from config: %d seconds", utc_offset);
+    }
+    if (error) {
+        g_error_free(error);
+    }
+
+    g_key_file_unref(key_file);
+    g_free(config_path);
+}
+
+void save_language_to_config(AppData *data) {
+    if (!data) {
+        return;
+    }
+
+    gchar *config_path = get_config_file_path();
+    if (!config_path) {
+        return;
+    }
+
+    GKeyFile *key_file = g_key_file_new();
+    if (g_file_test(config_path, G_FILE_TEST_EXISTS)) {
+        GError *load_error = NULL;
+        if (!g_key_file_load_from_file(key_file, config_path, G_KEY_FILE_NONE, &load_error)) {
+            g_warning("Failed to load config for language save: %s",
+                      load_error ? load_error->message : "Unknown error");
+            if (load_error) {
+                g_error_free(load_error);
+            }
+        }
+    }
+
+    g_key_file_set_string(key_file, "General", "language", app_language_to_string(data->language));
+
+    GError *error = NULL;
+    if (!g_key_file_save_to_file(key_file, config_path, &error)) {
+        g_warning("Failed to save language config: %s", error ? error->message : "Unknown error");
+        if (error) {
+            g_error_free(error);
+        }
+    }
+
+    g_key_file_unref(key_file);
+    g_free(config_path);
+}
+
+void load_language_from_config(AppData *data) {
+    if (!data) {
+        return;
+    }
+
+    gchar *config_path = get_config_file_path();
+    if (!config_path) {
+        return;
+    }
+
+    if (!g_file_test(config_path, G_FILE_TEST_EXISTS)) {
+        g_free(config_path);
+        return;
+    }
+
+    GKeyFile *key_file = g_key_file_new();
+    GError *error = NULL;
+
+    if (!g_key_file_load_from_file(key_file, config_path, G_KEY_FILE_NONE, &error)) {
+        g_warning("Failed to load config for language: %s", error ? error->message : "Unknown error");
+        if (error) {
+            g_error_free(error);
+        }
+        g_key_file_unref(key_file);
+        g_free(config_path);
+        return;
+    }
+
+    gchar *lang = g_key_file_get_string(key_file, "General", "language", &error);
+    if (lang) {
+        data->language = app_language_from_string(lang);
+        g_free(lang);
     }
     if (error) {
         g_error_free(error);

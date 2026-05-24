@@ -58,6 +58,7 @@ set(SOURCES
     src/weather.c
     src/config.c
     src/ui.c
+    src/i18n.c
 )
 
 # Create executable

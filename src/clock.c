@@ -1,5 +1,29 @@
 #include "clock.h"
 
+static const char *weekdays_zh[] = {
+    NULL,
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe4\xb8\x80",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe4\xba\x8c",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe4\xb8\x89",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe5\x9b\x9b",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe4\xba\x94",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe5\x85\xad",
+    "\xe6\x98\x9f\xe6\x9c\x9f\xe6\x97\xa5",
+};
+
+static gchar *format_date_string(GDateTime *dt, AppLanguage lang) {
+    if (lang == APP_LANG_ZH_CN) {
+        gint year = g_date_time_get_year(dt);
+        gint month = g_date_time_get_month(dt);
+        gint day = g_date_time_get_day_of_month(dt);
+        gint dow = g_date_time_get_day_of_week(dt);
+        const char *wd = (dow >= 1 && dow <= 7) ? weekdays_zh[dow] : "";
+        return g_strdup_printf("%d\xe5\xb9\xb4%d\xe6\x9c\x88%d\xe6\x97\xa5 %s",
+                               year, month, day, wd);
+    }
+    return g_date_time_format(dt, "%A, %B %d, %Y");
+}
+
 void update_clock(AppData *data) {
     if (!data || !data->clock_label || !data->date_label) {
         return;
@@ -49,7 +73,7 @@ void update_clock(AppData *data) {
     }
 
     gchar *time_str = g_date_time_format(dt, "%H:%M:%S");
-    gchar *date_str = g_date_time_format(dt, "%A, %B %d, %Y");
+    gchar *date_str = format_date_string(dt, data->language);
 
     if (time_str) {
         gtk_label_set_text(GTK_LABEL(data->clock_label), time_str);

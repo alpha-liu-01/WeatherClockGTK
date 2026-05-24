@@ -9,6 +9,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    data->language = APP_LANG_EN;
     data->location_lat = g_strdup("43.640");
     data->location_lon = g_strdup("-79.565");
 
@@ -21,6 +22,7 @@ int main(int argc, char *argv[]) {
     }
 
     load_location_from_config(data);
+    load_language_from_config(data);
 
     if (argc >= 3) {
         g_free(data->location_lat);

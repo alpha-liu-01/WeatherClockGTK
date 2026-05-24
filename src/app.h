@@ -1,6 +1,7 @@
 #ifndef APP_H
 #define APP_H
 
+#include "i18n.h"
 #include <gtk/gtk.h>
 #include <glib.h>
 #include <glib/gstdio.h>
@@ -29,6 +30,17 @@ typedef struct {
     GtkWidget *weather_box;
     GtkWidget *lat_entry;
     GtkWidget *lon_entry;
+    GtkWidget *language_dropdown;
+    GtkWidget *location_title_label;
+    GtkWidget *lat_label;
+    GtkWidget *lon_label;
+    GtkWidget *lang_label;
+    GtkWidget *update_location_btn;
+    GtkWidget *settings_close_btn;
+    GtkWidget *settings_btn;
+    GtkWidget *exit_btn;
+    GtkWidget *weather_title_label;
+    AppLanguage language;
     SoupSession *session;
     SoupMessage *pending_message;
     GtkCssProvider *css_provider;

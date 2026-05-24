@@ -1,5 +1,6 @@
 #include "weather.h"
 #include "config.h"
+#include "i18n.h"
 
 typedef struct {
     AppData *data;
@@ -8,17 +9,28 @@ typedef struct {
 
 static gboolean retry_fetch_weather(gpointer user_data);
 
-const char *get_weather_description(int code) {
-    if (code == 0) return "Clear";
-    if (code <= 3) return "Cloudy";
-    if (code <= 49) return "Foggy";
-    if (code <= 59) return "Drizzle";
-    if (code <= 69) return "Rain";
-    if (code <= 79) return "Snow";
-    if (code <= 84) return "Rain Shower";
-    if (code <= 86) return "Snow Shower";
-    if (code <= 99) return "Thunderstorm";
-    return "Unknown";
+const char *get_weather_description(int code, AppLanguage lang) {
+    I18nId id = I18N_WEATHER_UNKNOWN;
+    if (code == 0) {
+        id = I18N_WEATHER_CLEAR;
+    } else if (code <= 3) {
+        id = I18N_WEATHER_CLOUDY;
+    } else if (code <= 49) {
+        id = I18N_WEATHER_FOGGY;
+    } else if (code <= 59) {
+        id = I18N_WEATHER_DRIZZLE;
+    } else if (code <= 69) {
+        id = I18N_WEATHER_RAIN;
+    } else if (code <= 79) {
+        id = I18N_WEATHER_SNOW;
+    } else if (code <= 84) {
+        id = I18N_WEATHER_RAIN_SHOWER;
+    } else if (code <= 86) {
+        id = I18N_WEATHER_SNOW_SHOWER;
+    } else if (code <= 99) {
+        id = I18N_WEATHER_THUNDERSTORM;
+    }
+    return i18n_get(lang, id);
 }
 
 const char *get_weather_icon(int code) {
@@ -49,7 +61,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
     }
 
     if (!json_data_str || strlen(json_data_str) == 0) {
-        GtkWidget *error_label = gtk_label_new("Empty weather data received");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_EMPTY_WEATHER));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         return FALSE;
@@ -57,7 +69,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
     if (json_data_str[0] == '<') {
         g_warning("API returned HTML instead of JSON (likely server error)");
-        GtkWidget *error_label = gtk_label_new("Server returned error page - retrying...");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_SERVER_HTML));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         return FALSE;
@@ -78,10 +90,11 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
     GError *error = NULL;
 
     if (!json_parser_load_from_data(parser, json_data_str, -1, &error)) {
-        char error_msg[512];
-        snprintf(error_msg, sizeof(error_msg), "Parse error: %s - retrying...", error ? error->message : "Unknown");
+        gchar *error_msg = g_strdup_printf(i18n_(data, I18N_ERR_PARSE_FMT),
+                                           error ? error->message : "Unknown");
         g_warning("JSON parse error: %s", error ? error->message : "Unknown");
-        GtkWidget *error_label = gtk_label_new(error_msg);
+        GtkWidget *error_label = gtk_label_new(error_msg ? error_msg : "");
+        g_free(error_msg);
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         if (error) g_error_free(error);
@@ -91,7 +104,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
     JsonNode *root = json_parser_get_root(parser);
     if (!root) {
-        GtkWidget *error_label = gtk_label_new("Invalid JSON: no root node - retrying...");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_NO_ROOT));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         g_object_unref(parser);
@@ -100,7 +113,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
     JsonObject *root_obj = json_node_get_object(root);
     if (!root_obj) {
-        GtkWidget *error_label = gtk_label_new("Invalid weather data format - retrying...");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_INVALID_FORMAT));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         g_object_unref(parser);
@@ -202,17 +215,18 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
             error_msg = NULL;
         }
 
-        char error_text[512];
+        gchar *error_text = NULL;
         if (error_msg) {
-            snprintf(error_text, sizeof(error_text), "API Error: %s (Keys: %s)", error_msg, keys_str->str);
+            error_text = g_strdup_printf(i18n_(data, I18N_ERR_API_FMT), error_msg, keys_str->str);
         } else if (error_type != G_TYPE_BOOLEAN && error_type != G_TYPE_STRING) {
-            snprintf(error_text, sizeof(error_text), "API Error: Error type: %s (Keys: %s)",
-                     g_type_name(error_type), keys_str->str);
+            error_text = g_strdup_printf(i18n_(data, I18N_ERR_API_TYPE_FMT),
+                                         g_type_name(error_type), keys_str->str);
         } else {
-            snprintf(error_text, sizeof(error_text), "API Error: Unknown (Keys: %s)", keys_str->str);
+            error_text = g_strdup_printf(i18n_(data, I18N_ERR_API_UNKNOWN_FMT), keys_str->str);
         }
 
-        GtkWidget *error_label = gtk_label_new(error_text);
+        GtkWidget *error_label = gtk_label_new(error_text ? error_text : "");
+        g_free(error_text);
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
 
@@ -234,9 +248,9 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
         }
         g_warning("No 'hourly' key found. Available keys: %s", members_str->str);
 
-        char error_msg[512];
-        snprintf(error_msg, sizeof(error_msg), "No hourly data - retrying... Keys: %s", members_str->str);
-        GtkWidget *error_label = gtk_label_new(error_msg);
+        gchar *error_msg = g_strdup_printf(i18n_(data, I18N_ERR_NO_HOURLY_FMT), members_str->str);
+        GtkWidget *error_label = gtk_label_new(error_msg ? error_msg : "");
+        g_free(error_msg);
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
 
@@ -248,7 +262,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
 
     JsonObject *hourly = json_object_get_object_member(root_obj, "hourly");
     if (!hourly) {
-        GtkWidget *error_label = gtk_label_new("No hourly data available - retrying...");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_NO_HOURLY_DATA));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         g_object_unref(parser);
@@ -260,7 +274,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
     JsonArray *code_array = json_object_get_array_member(hourly, "weathercode");
 
     if (!time_array || !temp_array || !code_array) {
-        GtkWidget *error_label = gtk_label_new("Incomplete weather data - retrying...");
+        GtkWidget *error_label = gtk_label_new(i18n_(data, I18N_ERR_INCOMPLETE_DATA));
         gtk_widget_add_css_class(error_label, "error-text");
         gtk_box_append(GTK_BOX(data->weather_box), error_label);
         g_object_unref(parser);
@@ -357,7 +371,7 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
             snprintf(hour_str, sizeof(hour_str), "%.2s:00", time_str + 11);
             hour_str[7] = '\0';
         } else {
-            strncpy(hour_str, "N/A", sizeof(hour_str) - 1);
+            strncpy(hour_str, i18n_(data, I18N_NA), sizeof(hour_str) - 1);
             hour_str[sizeof(hour_str) - 1] = '\0';
         }
 
@@ -373,14 +387,14 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
         char temp_str[32];
         int temp_len = snprintf(temp_str, sizeof(temp_str), "%.1f\xc2\xb0""C", temp);
         if (temp_len < 0 || temp_len >= (int)sizeof(temp_str)) {
-            strncpy(temp_str, "N/A", sizeof(temp_str) - 1);
+            strncpy(temp_str, i18n_(data, I18N_NA), sizeof(temp_str) - 1);
             temp_str[sizeof(temp_str) - 1] = '\0';
         }
         GtkWidget *temp_label = gtk_label_new(temp_str);
         gtk_widget_add_css_class(temp_label, "weather-temp");
         gtk_box_append(GTK_BOX(hour_box), temp_label);
 
-        GtkWidget *desc_label = gtk_label_new(get_weather_description((int)code));
+        GtkWidget *desc_label = gtk_label_new(get_weather_description((int)code, data->language));
         gtk_widget_add_css_class(desc_label, "weather-desc");
         gtk_box_append(GTK_BOX(hour_box), desc_label);
 
@@ -466,10 +480,10 @@ static gboolean show_weather_error(gpointer user_data) {
 
     gchar *error_msg;
     if (data->is_retrying) {
-        error_msg = g_strdup_printf("Connection issue - retrying in %d seconds... (attempt %d/%d)",
+        error_msg = g_strdup_printf(i18n_(data, I18N_ERR_CONNECTION_FMT),
                                     data->retry_delay, data->retry_count + 1, MAX_RETRY_ATTEMPTS);
     } else {
-        error_msg = g_strdup("Failed to fetch weather - will retry at next scheduled update");
+        error_msg = g_strdup(i18n_(data, I18N_ERR_FETCH_FAILED));
     }
 
     GtkWidget *error_label = gtk_label_new(error_msg);

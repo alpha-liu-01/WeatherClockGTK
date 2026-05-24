@@ -12,6 +12,7 @@ A GTK4-based clock and weather application designed for repurposed PC-based tabl
 - **Auto-refresh**: Clock updates every second, weather updates every hour
 - **Intelligent Retry Logic**: Automatically recovers from network issues with exponential backoff (up to 5 retries)
 - **Cross-platform**: Works on Windows (via MSYS2) and Linux
+- **Bilingual UI**: English and Simplified Chinese (zh_CN), selectable in Settings
 
 ## Requirements
 
@@ -228,6 +229,22 @@ Default location is Berlin, Germany (52.52, 13.41).
 - Press `F11` or `Alt+F4` to exit (depending on your window manager)
 - The clock updates every second
 - Weather data refreshes every minute
+
+### Language
+
+Open **Settings** and choose **Language** / **语言**:
+
+- **English** — date format: `Sunday, May 24, 2026`; 24-hour clock (`14:30:05`)
+- **中文（简体）** — date format: `2026年5月24日 星期日`; 24-hour clock (same)
+
+The choice is saved in `~/weatherclock.conf` under `[General]`:
+
+```ini
+[General]
+language=zh_CN
+```
+
+Use `language=en` for English. If Chinese characters do not render correctly on your device, install a CJK font package (e.g. `fonts-noto-cjk` on Debian/Ubuntu).
 
 ## Distribution
 
