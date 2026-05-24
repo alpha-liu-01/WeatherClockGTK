@@ -9,6 +9,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    data->language = APP_LANG_EN;
     data->location_lat = g_strdup("43.640");
     data->location_lon = g_strdup("-79.565");
 
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
     data->clock_label = NULL;
     data->date_label = NULL;
     data->weather_box = NULL;
+    data->weather_scrolled = NULL;
     data->lat_entry = NULL;
     data->lon_entry = NULL;
 

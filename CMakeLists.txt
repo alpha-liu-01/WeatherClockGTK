@@ -58,6 +58,7 @@ set(SOURCES
     src/weather.c
     src/config.c
     src/ui.c
+    src/i18n.c
 )
 
 # Create executable
@@ -100,8 +101,31 @@ if(WIN32)
     )
 endif()
 
-# Installation (optional)
+# Application ID, desktop entry, and icons
+set(APP_ID com.weatherclock.app)
+set(ICON_SOURCE ${CMAKE_SOURCE_DIR}/data/icons/${APP_ID}.png)
+
+if(NOT EXISTS ${ICON_SOURCE})
+    message(FATAL_ERROR "Application icon not found: ${ICON_SOURCE}")
+endif()
+
+set(GENERATED_ICONS_DIR ${CMAKE_BINARY_DIR}/generated-icons/hicolor)
+foreach(ICON_SIZE 48 128 256 512)
+    set(ICON_DEST_DIR ${GENERATED_ICONS_DIR}/${ICON_SIZE}x${ICON_SIZE}/apps)
+    file(MAKE_DIRECTORY ${ICON_DEST_DIR})
+    configure_file(${ICON_SOURCE} ${ICON_DEST_DIR}/${APP_ID}.png COPYONLY)
+endforeach()
+
 install(TARGETS weatherclock
     RUNTIME DESTINATION bin
+)
+
+install(FILES ${CMAKE_SOURCE_DIR}/data/${APP_ID}.desktop
+        DESTINATION share/applications
+)
+
+install(DIRECTORY ${GENERATED_ICONS_DIR}/
+        DESTINATION share/icons/hicolor
+        FILES_MATCHING PATTERN "${APP_ID}.png"
 )
 

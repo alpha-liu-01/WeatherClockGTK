@@ -76,7 +76,7 @@ if ! pkg-config --exists libsoup-3.0; then
 fi
 
 if ! pkg-config --exists json-glib-1.0; then
-    MISSING_DEPS+=("json-glib-dev")
+    MISSING_DEPS+=("libjson-glib-dev")
 fi
 
 if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
@@ -129,6 +129,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 echo -e "${GREEN}Build successful!${NC}"
+echo ""
+echo "To install system-wide:"
+echo "  sudo cmake --install $BUILD_DIR"
+echo "Then launch from the app menu or run: weatherclock"
 echo ""
 
 # Find executable

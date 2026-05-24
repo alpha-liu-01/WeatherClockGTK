@@ -5,7 +5,7 @@ GTK4_CFLAGS = $(shell $(PKG_CONFIG) --cflags gtk4 libsoup-3.0 json-glib-1.0)
 GTK4_LIBS = $(shell $(PKG_CONFIG) --libs gtk4 libsoup-3.0 json-glib-1.0)
 
 TARGET = weatherclock
-SOURCES = src/main.c src/clock.c src/weather.c src/config.c src/ui.c
+SOURCES = src/main.c src/clock.c src/weather.c src/config.c src/ui.c src/i18n.c
 OBJECTS = $(SOURCES:.c=.o)
 
 .PHONY: all clean install
@@ -22,4 +22,5 @@ clean:
 	rm -f $(OBJECTS) $(TARGET) $(TARGET).exe
 
 install: $(TARGET)
-	@echo "Build complete! Run ./$(TARGET) or ./$(TARGET).exe"
+	@echo "Use CMake to install system-wide: sudo cmake --install build"
+	@echo "Or run from the build tree: ./$(TARGET)"

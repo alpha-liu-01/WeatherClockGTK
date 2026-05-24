@@ -86,18 +86,18 @@ Source: $PACKAGE_NAME
 Section: utils
 Priority: optional
 Maintainer: $MAINTAINER
-Build-Depends: debhelper (>= 13),
+Build-Depends: debhelper-compat (= 13),
                cmake (>= 3.16),
                pkg-config,
                libgtk-4-dev,
                libsoup-3.0-dev,
                libjson-glib-dev,
                build-essential
-Standards-Version: 4.6.0
+Standards-Version: 4.7.0
 Homepage: https://github.com/yourusername/WeatherClockGTK
 
 Package: $PACKAGE_NAME
-Architecture: amd64 arm64
+Architecture: $CURRENT_ARCH
 Depends: \${shlibs:Depends}, \${misc:Depends},
          libgtk-4-1,
          libsoup-3.0-0,
@@ -149,17 +149,17 @@ $PACKAGE_NAME ($VERSION) unstable; urgency=medium
  -- $MAINTAINER  $(date -R)
 EOF
 
-# Create debian/compat
-echo "13" > debian/compat
-
 # Create debian/postinst (optional post-installation script)
 cat > debian/postinst << 'EOF'
 #!/bin/bash
 set -e
 
-# Update desktop database if desktop file exists
-if [ -f /usr/share/applications/weatherclockgtk.desktop ]; then
+# Update desktop and icon caches if installed
+if [ -f /usr/share/applications/com.weatherclock.app.desktop ]; then
     update-desktop-database /usr/share/applications/ 2>/dev/null || true
+fi
+if [ -d /usr/share/icons/hicolor ]; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 fi
 
 exit 0
@@ -172,9 +172,12 @@ cat > debian/postrm << 'EOF'
 #!/bin/bash
 set -e
 
-# Update desktop database if desktop file exists
-if [ -f /usr/share/applications/weatherclockgtk.desktop ]; then
+# Update desktop and icon caches if installed
+if [ -f /usr/share/applications/com.weatherclock.app.desktop ]; then
     update-desktop-database /usr/share/applications/ 2>/dev/null || true
+fi
+if [ -d /usr/share/icons/hicolor ]; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 fi
 
 exit 0
