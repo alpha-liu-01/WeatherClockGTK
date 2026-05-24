@@ -40,6 +40,7 @@ static const char *strings_en[I18N_COUNT] = {
     [I18N_ERR_INCOMPLETE_DATA] = "Incomplete weather data - retrying...",
     [I18N_ERR_CONNECTION_FMT] = "Connection issue - retrying in %d seconds... (attempt %d/%d)",
     [I18N_ERR_FETCH_FAILED] = "Failed to fetch weather - will retry at next scheduled update",
+    [I18N_ERR_UNKNOWN_DETAIL] = "Unknown",
 };
 
 static const char *strings_zh[I18N_COUNT] = {
@@ -81,10 +82,11 @@ static const char *strings_zh[I18N_COUNT] = {
     [I18N_ERR_INCOMPLETE_DATA] = "\xe5\xa4\xa9\xe6\xb0\x94\xe6\x95\xb0\xe6\x8d\xae\xe4\xb8\x8d\xe5\xae\x8c\xe6\x95\xb4\xef\xbc\x8c\xe6\xad\xa3\xe5\x9c\xa8\xe9\x87\x8d\xe8\xaf\x95...",
     [I18N_ERR_CONNECTION_FMT] = "\xe8\xbf\x9e\xe6\x8e\xa5\xe9\x97\xae\xe9\xa2\x98\xef\xbc\x8c%d \xe7\xa7\x92\xe5\x90\x8e\xe9\x87\x8d\xe8\xaf\x95... (\xe7\xac\xac %d/%d \xe6\xac\xa1)",
     [I18N_ERR_FETCH_FAILED] = "\xe8\x8e\xb7\xe5\x8f\x96\xe5\xa4\xa9\xe6\xb0\x94\xe5\xa4\xb1\xe8\xb4\xa5\xef\xbc\x8c\xe5\xb0\x86\xe5\x9c\xa8\xe4\xb8\x8b\xe6\xac\xa1\xe5\xae\x9a\xe6\x97\xb6\xe6\x9b\xb4\xe6\x96\xb0\xe6\x97\xb6\xe9\x87\x8d\xe8\xaf\x95",
+    [I18N_ERR_UNKNOWN_DETAIL] = "\xe6\x9c\xaa\xe7\x9f\xa5",
 };
 
 const char *i18n_get(AppLanguage lang, I18nId id) {
-    if (id < 0 || id >= I18N_COUNT) {
+    if ((unsigned)id >= (unsigned)I18N_COUNT) {
         return "";
     }
     if (lang == APP_LANG_ZH_CN) {

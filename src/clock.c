@@ -77,12 +77,12 @@ void update_clock(AppData *data) {
 
     if (time_str) {
         gtk_label_set_text(GTK_LABEL(data->clock_label), time_str);
-        g_free(time_str);
     }
     if (date_str) {
         gtk_label_set_text(GTK_LABEL(data->date_label), date_str);
-        g_free(date_str);
     }
+    g_free(time_str);
+    g_free(date_str);
 
     g_date_time_unref(dt);
 }

@@ -112,11 +112,10 @@ void ui_refresh_translations(AppData *data) {
     if (data->weather_title_label) {
         gtk_label_set_text(GTK_LABEL(data->weather_title_label), i18n_(data, I18N_WEATHER_FORECAST_TITLE));
     }
-    if (data->date_label) {
-        gtk_label_set_text(GTK_LABEL(data->date_label), i18n_(data, I18N_DATE_PLACEHOLDER));
-    }
 
     if (data->language_dropdown) {
+        g_signal_handlers_block_by_func(data->language_dropdown,
+                                        G_CALLBACK(on_language_changed), data);
         GtkStringList *list = GTK_STRING_LIST(gtk_drop_down_get_model(GTK_DROP_DOWN(data->language_dropdown)));
         if (list) {
             gtk_string_list_splice(list, 0, 2,
@@ -126,6 +125,8 @@ void ui_refresh_translations(AppData *data) {
                                        NULL
                                    });
         }
+        g_signal_handlers_unblock_by_func(data->language_dropdown,
+                                          G_CALLBACK(on_language_changed), data);
     }
 }
 

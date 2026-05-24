@@ -22,7 +22,6 @@ int main(int argc, char *argv[]) {
     }
 
     load_location_from_config(data);
-    load_language_from_config(data);
 
     if (argc >= 3) {
         g_free(data->location_lat);

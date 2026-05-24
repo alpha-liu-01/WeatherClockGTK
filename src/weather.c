@@ -90,9 +90,11 @@ static gboolean parse_weather_json(const char *json_data_str, AppData *data) {
     GError *error = NULL;
 
     if (!json_parser_load_from_data(parser, json_data_str, -1, &error)) {
-        gchar *error_msg = g_strdup_printf(i18n_(data, I18N_ERR_PARSE_FMT),
-                                           error ? error->message : "Unknown");
-        g_warning("JSON parse error: %s", error ? error->message : "Unknown");
+        const gchar *detail = (error && error->message)
+            ? error->message
+            : i18n_(data, I18N_ERR_UNKNOWN_DETAIL);
+        gchar *error_msg = g_strdup_printf(i18n_(data, I18N_ERR_PARSE_FMT), detail);
+        g_warning("JSON parse error: %s", detail);
         GtkWidget *error_label = gtk_label_new(error_msg ? error_msg : "");
         g_free(error_msg);
         gtk_widget_add_css_class(error_label, "error-text");
