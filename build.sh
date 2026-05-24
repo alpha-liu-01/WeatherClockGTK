@@ -76,7 +76,7 @@ if ! pkg-config --exists libsoup-3.0; then
 fi
 
 if ! pkg-config --exists json-glib-1.0; then
-    MISSING_DEPS+=("json-glib-dev")
+    MISSING_DEPS+=("libjson-glib-dev")
 fi
 
 if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
