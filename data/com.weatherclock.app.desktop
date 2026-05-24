@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Weather Clock
+Name[zh_CN]=天气时钟
+Comment=Large clock with hourly weather forecast
+Comment[zh_CN]=大时钟与逐小时天气预报
+Exec=weatherclock %F
+Icon=com.weatherclock.app
+Categories=Utility;Clock;
+StartupNotify=true
+Terminal=false

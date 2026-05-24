@@ -246,6 +246,29 @@ language=zh_CN
 
 Use `language=en` for English. If Chinese characters do not render correctly on your device, install a CJK font package (e.g. `fonts-noto-cjk` on Debian/Ubuntu).
 
+### Desktop integration (Linux)
+
+After building with CMake, install system-wide so the app appears in your desktop menu with icon:
+
+```bash
+./build.sh --skip-run
+sudo cmake --install build
+```
+
+Launch **Weather Clock** from the application menu, or run `weatherclock` from a terminal.
+
+The `.deb` package from `./package-deb.sh` installs the desktop entry and icon automatically.
+
+**Manual install to your home directory** (no sudo):
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+update-desktop-database "$HOME/.local/share/applications"
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor"
+```
+
+Desktop entry and icon source files live under [`data/`](data/).
+
 ## Distribution
 
 ### Windows Deployment

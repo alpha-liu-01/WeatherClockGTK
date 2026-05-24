@@ -22,4 +22,5 @@ clean:
 	rm -f $(OBJECTS) $(TARGET) $(TARGET).exe
 
 install: $(TARGET)
-	@echo "Build complete! Run ./$(TARGET) or ./$(TARGET).exe"
+	@echo "Use CMake to install system-wide: sudo cmake --install build"
+	@echo "Or run from the build tree: ./$(TARGET)"

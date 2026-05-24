@@ -130,6 +130,10 @@ if [ $? -ne 0 ]; then
 fi
 echo -e "${GREEN}Build successful!${NC}"
 echo ""
+echo "To install system-wide:"
+echo "  sudo cmake --install $BUILD_DIR"
+echo "Then launch from the app menu or run: weatherclock"
+echo ""
 
 # Find executable
 EXECUTABLE=""

@@ -224,6 +224,7 @@ void activate(GtkApplication *app, gpointer user_data) {
     AppData *data = (AppData *)user_data;
 
     data->window = gtk_application_window_new(app);
+    gtk_window_set_icon_name(GTK_WINDOW(data->window), "com.weatherclock.app");
     gtk_window_set_title(GTK_WINDOW(data->window), i18n_(data, I18N_MAIN_TITLE));
     gtk_window_set_resizable(GTK_WINDOW(data->window), TRUE);
     gtk_widget_set_name(data->window, "main-window");
