@@ -28,6 +28,15 @@
 #define WEATHER_HOUR_COUNT 6
 
 typedef struct {
+    gboolean valid;
+    gdouble temperature;
+    gint weather_code;
+    gint us_aqi; /* -1 if missing */
+} CurrentHourWeather;
+
+typedef struct WeatherFetchBundle WeatherFetchBundle;
+
+typedef struct {
     GtkWidget *window;
     GtkWidget *settings_window;
     GtkWidget *clock_label;
@@ -48,7 +57,10 @@ typedef struct {
     GtkWidget *weather_title_label;
     AppLanguage language;
     SoupSession *session;
-    SoupMessage *pending_message;
+    SoupMessage *pending_forecast_message;
+    SoupMessage *pending_aqi_message;
+    WeatherFetchBundle *fetch_bundle;
+    CurrentHourWeather current_hour;
     GtkCssProvider *css_provider;
     guint clock_timer_id;
     guint weather_timer_id;

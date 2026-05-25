@@ -1,4 +1,5 @@
 #include "app.h"
+#include "weather.h"
 #include "config.h"
 #include "ui.h"
 
@@ -64,10 +65,7 @@ int main(int argc, char *argv[]) {
     int status = g_application_run(G_APPLICATION(app), argc, argv);
 
     /* Cleanup */
-    if (data->pending_message) {
-        g_object_unref(data->pending_message);
-        data->pending_message = NULL;
-    }
+    weather_cancel_pending_fetches(data);
 
     if (data->clock_timer_id != 0) {
         g_source_remove(data->clock_timer_id);

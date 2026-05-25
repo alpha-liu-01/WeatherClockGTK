@@ -208,6 +208,8 @@ void ui_refresh_translations(AppData *data) {
         g_signal_handlers_unblock_by_func(data->language_dropdown,
                                           G_CALLBACK(on_language_changed), data);
     }
+
+    update_clock(data);
 }
 
 static void create_settings_window(AppData *data) {
@@ -352,6 +354,9 @@ void activate(GtkApplication *app, gpointer user_data) {
 
     data->date_label = gtk_label_new(i18n_(data, I18N_DATE_PLACEHOLDER));
     gtk_widget_add_css_class(data->date_label, "clock-date");
+    gtk_label_set_wrap(GTK_LABEL(data->date_label), TRUE);
+    gtk_label_set_wrap_mode(GTK_LABEL(data->date_label), PANGO_WRAP_WORD_CHAR);
+    gtk_label_set_ellipsize(GTK_LABEL(data->date_label), PANGO_ELLIPSIZE_END);
     gtk_box_append(GTK_BOX(clock_box), data->date_label);
 
     gtk_box_append(GTK_BOX(main_box), clock_box);

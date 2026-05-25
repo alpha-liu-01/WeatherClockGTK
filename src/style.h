@@ -16,9 +16,10 @@ static const char *APP_CSS =
     "  letter-spacing: -4px;"
     "}"
     ".clock-date {"
-    "  font-size: 48px;"
+    "  font-size: 36px;"
     "  color: #cccccc;"
     "  margin-top: 0px;"
+    "  wrap-mode: word-char;"
     "}"
 
     ".weather-section {"
