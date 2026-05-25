@@ -19,7 +19,6 @@ static const char *APP_CSS =
     "  font-size: 36px;"
     "  color: #cccccc;"
     "  margin-top: 0px;"
-    "  wrap-mode: word-char;"
     "}"
 
     ".weather-section {"
