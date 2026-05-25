@@ -31,6 +31,8 @@ static void write_app_data_to_keyfile(GKeyFile *key_file, AppData *data) {
     }
 
     g_key_file_set_string(key_file, "General", "language", app_language_to_string(data->language));
+    g_key_file_set_string(key_file, "General", "forecast_mode",
+                          forecast_mode_to_string(data->forecast_mode));
 }
 
 static void save_app_config(AppData *data) {
@@ -162,6 +164,27 @@ void load_location_from_config(AppData *data) {
 void load_language_from_config(AppData *data) {
     /* Language is loaded together with location in load_location_from_config. */
     (void)data;
+}
+
+void save_forecast_mode_to_config(AppData *data) {
+    if (!data) {
+        return;
+    }
+    save_app_config(data);
+}
+
+ForecastMode forecast_mode_from_string(const char *s) {
+    if (s && g_strcmp0(s, "daily") == 0) {
+        return FORECAST_MODE_DAILY;
+    }
+    return FORECAST_MODE_HOURLY;
+}
+
+const char *forecast_mode_to_string(ForecastMode mode) {
+    if (mode == FORECAST_MODE_DAILY) {
+        return "daily";
+    }
+    return "hourly";
 }
 
 void update_location_from_entries(AppData *data) {

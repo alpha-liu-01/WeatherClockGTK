@@ -13,9 +13,16 @@ static const char *strings_en[I18N_COUNT] = {
     [I18N_SETTINGS_BTN] = "Settings",
     [I18N_EXIT] = "Exit",
     [I18N_WEATHER_FORECAST_TITLE] = "Hourly Weather Forecast",
+    [I18N_DAILY_FORECAST_TITLE] = "6-Day Forecast",
+    [I18N_TODAY] = "Today",
+    [I18N_DAILY_TEMP_RANGE] = "%.0f\xc2\xb0 / %.0f\xc2\xb0""C",
+    [I18N_FORECAST_MODE_HOURLY] = "Hourly forecast",
+    [I18N_FORECAST_MODE_DAILY] = "Daily forecast",
     [I18N_LANG_OPTION_EN] = "English",
     [I18N_LANG_OPTION_ZH] = "\xe4\xb8\xad\xe6\x96\x87\xef\xbc\x88\xe7\xae\x80\xe4\xbd\x93\xef\xbc\x89",
     [I18N_DATE_PLACEHOLDER] = "Monday, January 1, 2024",
+    [I18N_DATE_WITH_WEATHER] = "%s \xc2\xb7 %s \xc2\xb7 %.1f\xc2\xb0""C \xc2\xb7 AQI %d",
+    [I18N_DATE_WITH_WEATHER_NO_AQI] = "%s \xc2\xb7 %s \xc2\xb7 %.1f\xc2\xb0""C",
     [I18N_WEATHER_CLEAR] = "Clear",
     [I18N_WEATHER_CLOUDY] = "Cloudy",
     [I18N_WEATHER_FOGGY] = "Foggy",
@@ -55,9 +62,16 @@ static const char *strings_zh[I18N_COUNT] = {
     [I18N_SETTINGS_BTN] = "\xe8\xae\xbe\xe7\xbd\xae",
     [I18N_EXIT] = "\xe9\x80\x80\xe5\x87\xba",
     [I18N_WEATHER_FORECAST_TITLE] = "\xe9\x80\x90\xe5\xb0\x8f\xe6\x97\xb6\xe5\xa4\xa9\xe6\xb0\x94\xe9\xa2\x84\xe6\x8a\xa5",
+    [I18N_DAILY_FORECAST_TITLE] = "6\xe6\x97\xa5\xe5\xa4\xa9\xe6\xb0\x94\xe9\xa2\x84\xe6\x8a\xa5",
+    [I18N_TODAY] = "\xe4\xbb\x8a\xe5\xa4\xa9",
+    [I18N_DAILY_TEMP_RANGE] = "%.0f\xc2\xb0 / %.0f\xc2\xb0""C",
+    [I18N_FORECAST_MODE_HOURLY] = "\xe9\x80\x90\xe5\xb0\x8f\xe6\x97\xb6\xe9\xa2\x84\xe6\x8a\xa5",
+    [I18N_FORECAST_MODE_DAILY] = "\xe9\x80\x90\xe6\x97\xa5\xe9\xa2\x84\xe6\x8a\xa5",
     [I18N_LANG_OPTION_EN] = "English",
     [I18N_LANG_OPTION_ZH] = "\xe4\xb8\xad\xe6\x96\x87\xef\xbc\x88\xe7\xae\x80\xe4\xbd\x93\xef\xbc\x89",
     [I18N_DATE_PLACEHOLDER] = "2024\xe5\xb9\xb4\x31\xe6\x9c\x88\x31\xe6\x97\xa5 \xe6\x98\x9f\xe6\x9c\x9f\xe4\xb8\x80",
+    [I18N_DATE_WITH_WEATHER] = "%s\xef\xbc\x8c%s\xef\xbc\x8c%.1f\xc2\xb0""C\xef\xbc\x8c""AQI %d",
+    [I18N_DATE_WITH_WEATHER_NO_AQI] = "%s\xef\xbc\x8c%s\xef\xbc\x8c%.1f\xc2\xb0""C",
     [I18N_WEATHER_CLEAR] = "\xe6\x99\xb4",
     [I18N_WEATHER_CLOUDY] = "\xe5\xa4\x9a\xe4\xba\x91",
     [I18N_WEATHER_FOGGY] = "\xe9\x9b\xbe",
@@ -111,3 +125,4 @@ const char *app_language_to_string(AppLanguage lang) {
     }
     return "en";
 }
+

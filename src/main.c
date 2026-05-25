@@ -1,4 +1,5 @@
 #include "app.h"
+#include "weather.h"
 #include "config.h"
 #include "ui.h"
 
@@ -64,10 +65,8 @@ int main(int argc, char *argv[]) {
     int status = g_application_run(G_APPLICATION(app), argc, argv);
 
     /* Cleanup */
-    if (data->pending_message) {
-        g_object_unref(data->pending_message);
-        data->pending_message = NULL;
-    }
+    weather_cancel_pending_fetches(data);
+    weather_cancel_pending_daily_fetches(data);
 
     if (data->clock_timer_id != 0) {
         g_source_remove(data->clock_timer_id);
@@ -76,6 +75,22 @@ int main(int argc, char *argv[]) {
     if (data->weather_timer_id != 0) {
         g_source_remove(data->weather_timer_id);
         data->weather_timer_id = 0;
+    }
+    if (data->scheduled_fetch_timer_id != 0) {
+        g_source_remove(data->scheduled_fetch_timer_id);
+        data->scheduled_fetch_timer_id = 0;
+    }
+    if (data->daily_timer_id != 0) {
+        g_source_remove(data->daily_timer_id);
+        data->daily_timer_id = 0;
+    }
+    if (data->scheduled_daily_fetch_timer_id != 0) {
+        g_source_remove(data->scheduled_daily_fetch_timer_id);
+        data->scheduled_daily_fetch_timer_id = 0;
+    }
+    if (data->daily_retry_timer_id != 0) {
+        g_source_remove(data->daily_retry_timer_id);
+        data->daily_retry_timer_id = 0;
     }
     if (data->retry_timer_id != 0) {
         g_source_remove(data->retry_timer_id);
@@ -120,6 +135,9 @@ int main(int argc, char *argv[]) {
     data->location_lon = NULL;
     g_free(data->timezone);
     data->timezone = NULL;
+    g_free(data->hourly_panel_error);
+    g_free(data->daily_panel_error);
+    weather_free_daily_cache(data);
     g_free(data);
 
     return status;
