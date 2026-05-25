@@ -77,6 +77,10 @@ int main(int argc, char *argv[]) {
         g_source_remove(data->weather_timer_id);
         data->weather_timer_id = 0;
     }
+    if (data->scheduled_fetch_timer_id != 0) {
+        g_source_remove(data->scheduled_fetch_timer_id);
+        data->scheduled_fetch_timer_id = 0;
+    }
     if (data->retry_timer_id != 0) {
         g_source_remove(data->retry_timer_id);
         data->retry_timer_id = 0;

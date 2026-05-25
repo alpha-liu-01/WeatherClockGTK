@@ -714,6 +714,37 @@ static gboolean retry_fetch_weather(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+static gboolean delayed_scheduled_fetch(gpointer user_data) {
+    AppData *data = (AppData *)user_data;
+    if (!data) {
+        return G_SOURCE_REMOVE;
+    }
+
+    data->scheduled_fetch_timer_id = 0;
+
+    if (!data->session) {
+        return G_SOURCE_REMOVE;
+    }
+
+    g_info("Hourly weather refresh (+%d s after hour boundary)", WEATHER_HOURLY_REFRESH_DELAY_SECONDS);
+    fetch_weather(data);
+    return G_SOURCE_REMOVE;
+}
+
+void schedule_delayed_weather_fetch(AppData *data) {
+    if (!data || !data->session) {
+        return;
+    }
+
+    if (data->scheduled_fetch_timer_id != 0) {
+        g_source_remove(data->scheduled_fetch_timer_id);
+        data->scheduled_fetch_timer_id = 0;
+    }
+
+    data->scheduled_fetch_timer_id = g_timeout_add_seconds(WEATHER_HOURLY_REFRESH_DELAY_SECONDS,
+                                                           delayed_scheduled_fetch, data);
+}
+
 void fetch_weather(AppData *data) {
     if (!data || !data->session) {
         return;
@@ -790,7 +821,8 @@ gboolean update_weather_callback(gpointer user_data) {
         return G_SOURCE_REMOVE;
     }
 
-    fetch_weather(data);
+    /* Hour timer fires at the top of the hour; delay the API call (see WEATHER_HOURLY_REFRESH_DELAY_SECONDS). */
+    schedule_delayed_weather_fetch(data);
 
     if (data->weather_timer_id != 0) {
         g_source_remove(data->weather_timer_id);

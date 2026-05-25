@@ -403,6 +403,7 @@ void activate(GtkApplication *app, gpointer user_data) {
 
     data->clock_timer_id = g_timeout_add_seconds(1, update_clock_callback, data);
 
+    /* Hourly refresh at the next clock hour; that path uses WEATHER_HOURLY_REFRESH_DELAY_SECONDS. */
     guint seconds_until_hour = seconds_until_next_hour();
     data->weather_timer_id = g_timeout_add_seconds(seconds_until_hour, update_weather_callback, data);
 
