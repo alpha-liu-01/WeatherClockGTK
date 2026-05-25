@@ -416,18 +416,17 @@ void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_add_css_class(weather_section, "weather-section");
     gtk_widget_set_vexpand(weather_section, FALSE);
 
-    data->weather_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    data->weather_header = gtk_center_box_new();
     gtk_widget_add_css_class(data->weather_header, "weather-header");
 
     data->weather_title_label = gtk_label_new(i18n_(data, I18N_WEATHER_FORECAST_TITLE));
     gtk_widget_add_css_class(data->weather_title_label, "weather-title");
-    gtk_widget_set_hexpand(data->weather_title_label, TRUE);
-    gtk_widget_set_halign(data->weather_title_label, GTK_ALIGN_START);
-    gtk_box_append(GTK_BOX(data->weather_header), data->weather_title_label);
+    gtk_label_set_xalign(GTK_LABEL(data->weather_title_label), 0.5);
+    gtk_label_set_justify(GTK_LABEL(data->weather_title_label), GTK_JUSTIFY_CENTER);
+    gtk_center_box_set_center_widget(GTK_CENTER_BOX(data->weather_header), data->weather_title_label);
 
     data->forecast_mode_switch = gtk_switch_new();
     gtk_widget_set_valign(data->forecast_mode_switch, GTK_ALIGN_CENTER);
-    gtk_widget_set_halign(data->forecast_mode_switch, GTK_ALIGN_END);
     gtk_widget_set_tooltip_text(data->forecast_mode_switch, i18n_(data, I18N_FORECAST_MODE_HOURLY));
 
     g_signal_handlers_block_by_func(data->forecast_mode_switch,
@@ -444,7 +443,7 @@ void activate(GtkApplication *app, gpointer user_data) {
     g_signal_connect(data->forecast_mode_switch, "notify::active",
                      G_CALLBACK(on_forecast_mode_switch_changed), data);
 
-    gtk_box_append(GTK_BOX(data->weather_header), data->forecast_mode_switch);
+    gtk_center_box_set_end_widget(GTK_CENTER_BOX(data->weather_header), data->forecast_mode_switch);
     gtk_box_append(GTK_BOX(weather_section), data->weather_header);
 
     weather_update_forecast_title(data);
