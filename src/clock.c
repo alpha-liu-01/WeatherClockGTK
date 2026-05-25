@@ -81,6 +81,37 @@ gboolean update_clock_callback(gpointer user_data) {
     return G_SOURCE_CONTINUE;
 }
 
+guint seconds_until_next_local_midnight(AppData *data) {
+    GDateTime *now = clock_get_location_datetime(data);
+    if (!now) {
+        return 86400;
+    }
+
+    GTimeZone *tz = g_date_time_get_timezone(now);
+    gint year = g_date_time_get_year(now);
+    gint month = g_date_time_get_month(now);
+    gint day = g_date_time_get_day_of_month(now);
+
+    GDateTime *next_midnight = g_date_time_add_days(
+        g_date_time_new(tz, year, month, day, 0, 0, 0), 1);
+
+    if (!next_midnight) {
+        g_date_time_unref(now);
+        return 86400;
+    }
+
+    gint64 diff_us = g_date_time_difference(next_midnight, now);
+    g_date_time_unref(now);
+    g_date_time_unref(next_midnight);
+
+    if (diff_us <= 0) {
+        return 86400;
+    }
+
+    guint seconds = (guint)(diff_us / G_TIME_SPAN_SECOND);
+    return seconds > 0 ? seconds : 1;
+}
+
 guint seconds_until_next_hour(void) {
     time_t now = time(NULL);
     if (now == (time_t)-1) {

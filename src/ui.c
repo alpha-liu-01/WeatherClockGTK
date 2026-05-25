@@ -99,8 +99,44 @@ static void on_location_update(GtkWidget *widget, gpointer user_data) {
         data->retry_timer_id = 0;
     }
 
+    data->daily_valid = FALSE;
+    weather_free_daily_cache(data);
+
+    data->daily_retry_count = 0;
+    data->daily_retry_delay = 0;
+    data->daily_is_retrying = FALSE;
+    if (data->daily_retry_timer_id != 0) {
+        g_source_remove(data->daily_retry_timer_id);
+        data->daily_retry_timer_id = 0;
+    }
+
     update_location_from_entries(data);
     fetch_weather(data);
+    fetch_daily_weather(data);
+}
+
+static void on_forecast_mode_switch_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
+    (void)pspec;
+    AppData *data = (AppData *)user_data;
+    if (!data || !data->forecast_mode_switch || object != G_OBJECT(data->forecast_mode_switch)) {
+        return;
+    }
+
+    gboolean active = gtk_switch_get_active(GTK_SWITCH(data->forecast_mode_switch));
+    ForecastMode new_mode = active ? FORECAST_MODE_DAILY : FORECAST_MODE_HOURLY;
+    if (new_mode == data->forecast_mode) {
+        return;
+    }
+
+    data->forecast_mode = new_mode;
+    save_forecast_mode_to_config(data);
+    weather_update_forecast_title(data);
+
+    if (new_mode == FORECAST_MODE_DAILY && !data->daily_valid) {
+        fetch_daily_weather(data);
+    }
+
+    weather_show_forecast_panel(data);
 }
 
 static void on_exit_clicked(GtkWidget *widget, gpointer user_data) {
@@ -189,9 +225,15 @@ void ui_refresh_translations(AppData *data) {
     if (data->exit_btn) {
         gtk_button_set_label(GTK_BUTTON(data->exit_btn), i18n_(data, I18N_EXIT));
     }
-    if (data->weather_title_label) {
-        gtk_label_set_text(GTK_LABEL(data->weather_title_label), i18n_(data, I18N_WEATHER_FORECAST_TITLE));
+    if (data->forecast_mode_switch) {
+        gtk_widget_set_tooltip_text(data->forecast_mode_switch,
+                                    data->forecast_mode == FORECAST_MODE_DAILY
+                                        ? i18n_(data, I18N_FORECAST_MODE_DAILY)
+                                        : i18n_(data, I18N_FORECAST_MODE_HOURLY));
     }
+    weather_update_forecast_title(data);
+    weather_refresh_daily_day_labels(data);
+    weather_show_forecast_panel(data);
 
     if (data->language_dropdown) {
         g_signal_handlers_block_by_func(data->language_dropdown,
@@ -366,9 +408,34 @@ void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_add_css_class(weather_section, "weather-section");
     gtk_widget_set_vexpand(weather_section, FALSE);
 
+    data->weather_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_add_css_class(data->weather_header, "weather-header");
+
     data->weather_title_label = gtk_label_new(i18n_(data, I18N_WEATHER_FORECAST_TITLE));
     gtk_widget_add_css_class(data->weather_title_label, "weather-title");
-    gtk_box_append(GTK_BOX(weather_section), data->weather_title_label);
+    gtk_widget_set_hexpand(data->weather_title_label, TRUE);
+    gtk_widget_set_halign(data->weather_title_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(data->weather_header), data->weather_title_label);
+
+    data->forecast_mode_switch = gtk_switch_new();
+    gtk_widget_set_valign(data->forecast_mode_switch, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(data->forecast_mode_switch, GTK_ALIGN_END);
+    gtk_widget_set_tooltip_text(data->forecast_mode_switch, i18n_(data, I18N_FORECAST_MODE_HOURLY));
+
+    g_signal_handlers_block_by_func(data->forecast_mode_switch,
+                                    G_CALLBACK(on_forecast_mode_switch_changed), data);
+    gtk_switch_set_active(GTK_SWITCH(data->forecast_mode_switch),
+                          data->forecast_mode == FORECAST_MODE_DAILY);
+    g_signal_handlers_unblock_by_func(data->forecast_mode_switch,
+                                      G_CALLBACK(on_forecast_mode_switch_changed), data);
+
+    g_signal_connect(data->forecast_mode_switch, "notify::active",
+                     G_CALLBACK(on_forecast_mode_switch_changed), data);
+
+    gtk_box_append(GTK_BOX(data->weather_header), data->forecast_mode_switch);
+    gtk_box_append(GTK_BOX(weather_section), data->weather_header);
+
+    weather_update_forecast_title(data);
 
     data->weather_scrolled = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(data->weather_scrolled),
@@ -412,7 +479,17 @@ void activate(GtkApplication *app, gpointer user_data) {
     guint seconds_until_hour = seconds_until_next_hour();
     data->weather_timer_id = g_timeout_add_seconds(seconds_until_hour, update_weather_callback, data);
 
+    weather_show_forecast_panel(data);
+
     fetch_weather(data);
+    fetch_daily_weather(data);
+
+    guint seconds_until_midnight = seconds_until_next_local_midnight(data);
+    if (seconds_until_midnight == 0) {
+        seconds_until_midnight = 86400;
+    }
+    data->daily_timer_id = g_timeout_add_seconds(seconds_until_midnight,
+                                                 update_daily_weather_callback, data);
 
     g_signal_connect(data->window, "realize", G_CALLBACK(on_window_realize_fullscreen), data);
 
