@@ -99,6 +99,10 @@ static void on_location_update(GtkWidget *widget, gpointer user_data) {
         data->retry_timer_id = 0;
     }
 
+    data->hourly_slots_valid = FALSE;
+    g_free(data->hourly_panel_error);
+    data->hourly_panel_error = NULL;
+
     data->daily_valid = FALSE;
     weather_free_daily_cache(data);
 
@@ -131,6 +135,10 @@ static void on_forecast_mode_switch_changed(GObject *object, GParamSpec *pspec, 
     data->forecast_mode = new_mode;
     save_forecast_mode_to_config(data);
     weather_update_forecast_title(data);
+    gtk_widget_set_tooltip_text(data->forecast_mode_switch,
+                                new_mode == FORECAST_MODE_DAILY
+                                    ? i18n_(data, I18N_FORECAST_MODE_DAILY)
+                                    : i18n_(data, I18N_FORECAST_MODE_HOURLY));
 
     if (new_mode == FORECAST_MODE_DAILY && !data->daily_valid) {
         fetch_daily_weather(data);
@@ -426,6 +434,10 @@ void activate(GtkApplication *app, gpointer user_data) {
                                     G_CALLBACK(on_forecast_mode_switch_changed), data);
     gtk_switch_set_active(GTK_SWITCH(data->forecast_mode_switch),
                           data->forecast_mode == FORECAST_MODE_DAILY);
+    gtk_widget_set_tooltip_text(data->forecast_mode_switch,
+                                data->forecast_mode == FORECAST_MODE_DAILY
+                                    ? i18n_(data, I18N_FORECAST_MODE_DAILY)
+                                    : i18n_(data, I18N_FORECAST_MODE_HOURLY));
     g_signal_handlers_unblock_by_func(data->forecast_mode_switch,
                                       G_CALLBACK(on_forecast_mode_switch_changed), data);
 

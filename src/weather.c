@@ -109,6 +109,14 @@ void weather_refresh_daily_day_labels(AppData *data) {
         return;
     }
 
+    GDateTime *location_ref = clock_get_location_datetime(data);
+    GTimeZone *location_tz = NULL;
+    if (location_ref) {
+        location_tz = g_date_time_get_timezone(location_ref);
+    } else if (data->tz) {
+        location_tz = data->tz;
+    }
+
     for (guint i = 0; i < WEATHER_DAY_COUNT; i++) {
         DailyForecastDay *day = &data->daily_days[i];
         if (!day->valid || !day->date_iso) {
@@ -125,10 +133,9 @@ void weather_refresh_daily_day_labels(AppData *data) {
             int y = atoi(day->date_iso);
             int m = atoi(day->date_iso + 5);
             int d = atoi(day->date_iso + 8);
-            GTimeZone *tz = data->tz;
             GDateTime *dt = NULL;
-            if (tz) {
-                dt = g_date_time_new(tz, y, m, d, 12, 0, 0);
+            if (location_tz) {
+                dt = g_date_time_new(location_tz, y, m, d, 12, 0, 0);
             } else {
                 dt = g_date_time_new_local(y, m, d, 12, 0, 0);
             }
@@ -146,6 +153,10 @@ void weather_refresh_daily_day_labels(AppData *data) {
         if (!day->day_label) {
             day->day_label = g_strdup(day->date_iso);
         }
+    }
+
+    if (location_ref) {
+        g_date_time_unref(location_ref);
     }
 }
 
@@ -510,7 +521,7 @@ static void append_weather_error(AppData *data, const gchar *text) {
 }
 
 static gint read_json_number(JsonNode *node) {
-    if (!node) {
+    if (!node || json_node_get_node_type(node) == JSON_NODE_NULL) {
         return 0;
     }
     if (json_node_get_value_type(node) == G_TYPE_INT64) {
@@ -523,7 +534,7 @@ static gint read_json_number(JsonNode *node) {
 }
 
 static gdouble read_json_double(JsonNode *node) {
-    if (!node) {
+    if (!node || json_node_get_node_type(node) == JSON_NODE_NULL) {
         return 0.0;
     }
     if (json_node_get_value_type(node) == G_TYPE_DOUBLE) {
@@ -624,11 +635,7 @@ static void apply_forecast_metadata(JsonObject *root_obj, AppData *data) {
     }
 }
 
-static gboolean handle_forecast_api_error(JsonObject *root_obj, AppData *data) {
-    if (!json_object_has_member(root_obj, "error")) {
-        return FALSE;
-    }
-
+static void handle_forecast_api_error(JsonObject *root_obj, AppData *data) {
     JsonNode *error_node = json_object_get_member(root_obj, "error");
     const gchar *error_msg = NULL;
 
@@ -668,7 +675,13 @@ static gboolean handle_forecast_api_error(JsonObject *root_obj, AppData *data) {
     g_free(error_text);
     g_string_free(keys_str, TRUE);
     g_list_free(members_list);
-    return TRUE;
+}
+
+static void daily_parse_abort(AppData *data, JsonParser *parser) {
+    weather_free_daily_cache(data);
+    if (parser) {
+        g_object_unref(parser);
+    }
 }
 
 static gboolean parse_weather_bundle(const char *forecast_json,
@@ -729,9 +742,10 @@ static gboolean parse_weather_bundle(const char *forecast_json,
 
     apply_forecast_metadata(root_obj, data);
 
-    if (handle_forecast_api_error(root_obj, data)) {
+    if (json_object_has_member(root_obj, "error")) {
+        handle_forecast_api_error(root_obj, data);
         g_object_unref(parser);
-        return TRUE;
+        return FALSE;
     }
 
     if (!json_object_has_member(root_obj, "hourly")) {
@@ -841,10 +855,6 @@ static gboolean parse_weather_bundle(const char *forecast_json,
     data->hourly_slots_valid = TRUE;
     weather_set_panel_error(&data->hourly_panel_error, NULL);
     weather_refresh_date_label(data, location_now);
-
-    if (data->forecast_mode == FORECAST_MODE_HOURLY) {
-        weather_show_forecast_panel(data);
-    }
 
     g_date_time_unref(location_now);
     g_object_unref(parser);
@@ -1390,19 +1400,24 @@ static gboolean parse_daily_forecast_json(const char *json_data_str, AppData *da
 
         if (!time_node || !code_node || !max_node || !min_node) {
             weather_set_panel_error(&data->daily_panel_error, i18n_(data, I18N_ERR_INCOMPLETE_DATA));
-            g_object_unref(parser);
+            daily_parse_abort(data, parser);
             return FALSE;
         }
 
         const gchar *date_str = json_node_get_string(time_node);
         if (!date_str) {
             weather_set_panel_error(&data->daily_panel_error, i18n_(data, I18N_ERR_INCOMPLETE_DATA));
-            g_object_unref(parser);
+            daily_parse_abort(data, parser);
             return FALSE;
         }
 
         DailyForecastDay *day = &data->daily_days[i];
         day->date_iso = g_strdup(date_str);
+        if (!day->date_iso) {
+            weather_set_panel_error(&data->daily_panel_error, i18n_(data, I18N_ERR_INCOMPLETE_DATA));
+            daily_parse_abort(data, parser);
+            return FALSE;
+        }
         day->weather_code = read_json_number(code_node);
         day->temp_max = read_json_double(max_node);
         day->temp_min = read_json_double(min_node);
@@ -1488,6 +1503,10 @@ static void try_finish_daily_fetch_bundle(AppData *data) {
     }
 
     DailyParseData *parse_data = g_new0(DailyParseData, 1);
+    if (!parse_data) {
+        free_daily_fetch_bundle(bundle);
+        return;
+    }
     parse_data->data = data;
     parse_data->daily_json = g_steal_pointer(&bundle->daily_json);
     free_daily_fetch_bundle(bundle);
