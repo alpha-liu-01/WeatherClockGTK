@@ -53,6 +53,7 @@ static gboolean retry_fetch_weather(gpointer user_data);
 static gboolean retry_fetch_daily_weather(gpointer user_data);
 
 static void setup_weather_label(GtkWidget *label, gboolean wrap_text);
+static void setup_daily_temp_label(GtkWidget *label);
 static void clear_weather_box(AppData *data);
 static void append_weather_error(AppData *data, const gchar *text);
 static gint read_json_number(JsonNode *node);
@@ -246,8 +247,8 @@ static void build_daily_forecast_cards(AppData *data) {
             temp_str[sizeof(temp_str) - 1] = '\0';
         }
         GtkWidget *temp_label = gtk_label_new(temp_str);
-        gtk_widget_add_css_class(temp_label, "weather-temp");
-        setup_weather_label(temp_label, FALSE);
+        gtk_widget_add_css_class(temp_label, "weather-temp-daily");
+        setup_daily_temp_label(temp_label);
         gtk_box_append(GTK_BOX(day_box), temp_label);
 
         GtkWidget *desc_label = gtk_label_new(
@@ -340,6 +341,16 @@ static void setup_weather_label(GtkWidget *label, gboolean wrap_text) {
     } else {
         gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
     }
+}
+
+static void setup_daily_temp_label(GtkWidget *label) {
+    gtk_widget_set_hexpand(label, TRUE);
+    gtk_widget_set_halign(label, GTK_ALIGN_FILL);
+    gtk_label_set_xalign(GTK_LABEL(label), 0.5);
+    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
+    gtk_label_set_lines(GTK_LABEL(label), 2);
+    gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_NONE);
 }
 
 static gchar *format_location_date(GDateTime *dt, AppLanguage lang) {
