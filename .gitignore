@@ -61,6 +61,11 @@ debian/
 *.changes
 *.buildinfo
 
+# Alpine / postmarketOS packaging
+alpine/
+packages/
+*.apk
+
 # Config files
 weatherclock.conf
 
