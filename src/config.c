@@ -33,6 +33,15 @@ static void write_app_data_to_keyfile(GKeyFile *key_file, AppData *data) {
     g_key_file_set_string(key_file, "General", "language", app_language_to_string(data->language));
     g_key_file_set_string(key_file, "General", "forecast_mode",
                           forecast_mode_to_string(data->forecast_mode));
+
+    g_key_file_set_string(key_file, "Theme", "mode", theme_mode_to_string(data->theme_mode));
+    g_key_file_set_boolean(key_file, "Theme", "schedule_enabled", data->theme_schedule_enabled);
+    gchar *light_time = g_strdup_printf("%02d:%02d", data->theme_light_hour, data->theme_light_minute);
+    g_key_file_set_string(key_file, "Theme", "light_time", light_time);
+    g_free(light_time);
+    gchar *dark_time = g_strdup_printf("%02d:%02d", data->theme_dark_hour, data->theme_dark_minute);
+    g_key_file_set_string(key_file, "Theme", "dark_time", dark_time);
+    g_free(dark_time);
 }
 
 static void save_app_config(AppData *data) {
@@ -185,6 +194,95 @@ const char *forecast_mode_to_string(ForecastMode mode) {
         return "daily";
     }
     return "hourly";
+}
+
+void save_theme_to_config(AppData *data) {
+    if (!data) {
+        return;
+    }
+    save_app_config(data);
+}
+
+void load_theme_from_config(AppData *data) {
+    if (!data) {
+        return;
+    }
+
+    /* Defaults: dark mode, schedule off, 07:00 light -> 19:00 dark. */
+    data->theme_mode = THEME_MODE_DARK;
+    data->theme_schedule_enabled = FALSE;
+    data->theme_light_hour = 7;
+    data->theme_light_minute = 0;
+    data->theme_dark_hour = 19;
+    data->theme_dark_minute = 0;
+
+    gchar *config_path = get_config_file_path();
+    if (!config_path) {
+        return;
+    }
+
+    if (!g_file_test(config_path, G_FILE_TEST_EXISTS)) {
+        g_free(config_path);
+        return;
+    }
+
+    GKeyFile *key_file = g_key_file_new();
+    GError *error = NULL;
+
+    if (!g_key_file_load_from_file(key_file, config_path, G_KEY_FILE_NONE, &error)) {
+        g_warning("Failed to load config: %s", error ? error->message : "Unknown error");
+        g_clear_error(&error);
+        g_key_file_unref(key_file);
+        g_free(config_path);
+        return;
+    }
+
+    gchar *mode = g_key_file_get_string(key_file, "Theme", "mode", NULL);
+    if (mode) {
+        data->theme_mode = theme_mode_from_string(mode);
+        g_free(mode);
+    }
+
+    data->theme_schedule_enabled =
+        g_key_file_get_boolean(key_file, "Theme", "schedule_enabled", NULL);
+    g_clear_error(&error);
+
+    gchar *light_time = g_key_file_get_string(key_file, "Theme", "light_time", NULL);
+    if (light_time) {
+        gint h = -1, m = -1;
+        if (sscanf(light_time, "%d:%d", &h, &m) == 2 && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            data->theme_light_hour = h;
+            data->theme_light_minute = m;
+        }
+        g_free(light_time);
+    }
+
+    gchar *dark_time = g_key_file_get_string(key_file, "Theme", "dark_time", NULL);
+    if (dark_time) {
+        gint h = -1, m = -1;
+        if (sscanf(dark_time, "%d:%d", &h, &m) == 2 && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            data->theme_dark_hour = h;
+            data->theme_dark_minute = m;
+        }
+        g_free(dark_time);
+    }
+
+    g_key_file_unref(key_file);
+    g_free(config_path);
+}
+
+ThemeMode theme_mode_from_string(const char *s) {
+    if (s && g_strcmp0(s, "light") == 0) {
+        return THEME_MODE_LIGHT;
+    }
+    return THEME_MODE_DARK;
+}
+
+const char *theme_mode_to_string(ThemeMode mode) {
+    if (mode == THEME_MODE_LIGHT) {
+        return "light";
+    }
+    return "dark";
 }
 
 void update_location_from_entries(AppData *data) {

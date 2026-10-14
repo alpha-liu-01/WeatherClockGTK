@@ -59,6 +59,7 @@ set(SOURCES
     src/config.c
     src/ui.c
     src/i18n.c
+    src/theme.c
 )
 
 # Create executable

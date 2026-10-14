@@ -1,6 +1,7 @@
 #include "app.h"
 #include "weather.h"
 #include "config.h"
+#include "theme.h"
 #include "ui.h"
 
 int main(int argc, char *argv[]) {
@@ -23,6 +24,7 @@ int main(int argc, char *argv[]) {
     }
 
     load_location_from_config(data);
+    load_theme_from_config(data);
 
     if (argc >= 3) {
         g_free(data->location_lat);
@@ -96,6 +98,7 @@ int main(int argc, char *argv[]) {
         g_source_remove(data->retry_timer_id);
         data->retry_timer_id = 0;
     }
+    theme_stop_timer(data);
 
     if (data->css_provider) {
         GdkDisplay *display = gdk_display_get_default();

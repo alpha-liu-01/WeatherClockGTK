@@ -33,6 +33,11 @@ typedef enum {
     FORECAST_MODE_DAILY
 } ForecastMode;
 
+typedef enum {
+    THEME_MODE_DARK,
+    THEME_MODE_LIGHT
+} ThemeMode;
+
 typedef struct {
     gboolean valid;
     gdouble temperature;
@@ -80,6 +85,24 @@ typedef struct {
     GtkWidget *weather_header;
     GtkWidget *forecast_mode_switch;
     ForecastMode forecast_mode;
+    ThemeMode theme_mode;
+    gboolean theme_schedule_enabled;
+    gint theme_light_hour;
+    gint theme_light_minute;
+    gint theme_dark_hour;
+    gint theme_dark_minute;
+    ThemeMode current_theme;
+    GtkWidget *appearance_title_label;
+    GtkWidget *theme_light_label;
+    GtkWidget *theme_light_switch;
+    GtkWidget *theme_schedule_label;
+    GtkWidget *theme_schedule_switch;
+    GtkWidget *theme_light_at_label;
+    GtkWidget *theme_light_hour_spin;
+    GtkWidget *theme_light_minute_spin;
+    GtkWidget *theme_dark_at_label;
+    GtkWidget *theme_dark_hour_spin;
+    GtkWidget *theme_dark_minute_spin;
     HourlyForecastSlot hourly_slots[WEATHER_HOUR_COUNT];
     gboolean hourly_slots_valid;
     gchar *hourly_panel_error;
@@ -102,6 +125,7 @@ typedef struct {
     guint scheduled_daily_fetch_timer_id;
     guint retry_timer_id;
     guint daily_retry_timer_id;
+    guint theme_timer_id;
     gint daily_retry_count;
     gint daily_retry_delay;
     gboolean daily_is_retrying;

@@ -1,8 +1,8 @@
 #include "ui.h"
-#include "style.h"
 #include "clock.h"
 #include "weather.h"
 #include "config.h"
+#include "theme.h"
 
 #define WEATHER_BOX_SPACING 8
 #define WEATHER_SECTION_PADDING 24
@@ -147,6 +147,110 @@ static void on_forecast_mode_switch_changed(GObject *object, GParamSpec *pspec, 
     weather_show_forecast_panel(data);
 }
 
+static void on_theme_light_switch_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
+    (void)pspec;
+    AppData *data = (AppData *)user_data;
+    if (!data || !data->theme_light_switch || object != G_OBJECT(data->theme_light_switch)) {
+        return;
+    }
+    if (data->theme_schedule_enabled) {
+        return;
+    }
+
+    gboolean active = gtk_switch_get_active(GTK_SWITCH(data->theme_light_switch));
+    ThemeMode new_mode = active ? THEME_MODE_LIGHT : THEME_MODE_DARK;
+    if (new_mode == data->theme_mode) {
+        return;
+    }
+
+    data->theme_mode = new_mode;
+    save_theme_to_config(data);
+    theme_evaluate(data);
+}
+
+static void on_theme_schedule_switch_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
+    (void)pspec;
+    AppData *data = (AppData *)user_data;
+    if (!data || !data->theme_schedule_switch || object != G_OBJECT(data->theme_schedule_switch)) {
+        return;
+    }
+
+    gboolean enabled = gtk_switch_get_active(GTK_SWITCH(data->theme_schedule_switch));
+    if (enabled == data->theme_schedule_enabled) {
+        return;
+    }
+    data->theme_schedule_enabled = enabled;
+
+    gtk_widget_set_sensitive(data->theme_light_switch, !enabled);
+    gtk_widget_set_sensitive(data->theme_light_at_label, enabled);
+    gtk_widget_set_sensitive(data->theme_light_hour_spin, enabled);
+    gtk_widget_set_sensitive(data->theme_light_minute_spin, enabled);
+    gtk_widget_set_sensitive(data->theme_dark_at_label, enabled);
+    gtk_widget_set_sensitive(data->theme_dark_hour_spin, enabled);
+    gtk_widget_set_sensitive(data->theme_dark_minute_spin, enabled);
+
+    save_theme_to_config(data);
+    theme_evaluate(data);
+}
+
+static void on_theme_time_changed(GtkWidget *widget, gpointer user_data) {
+    (void)widget;
+    AppData *data = (AppData *)user_data;
+    if (!data || !data->theme_light_hour_spin || !data->theme_light_minute_spin ||
+        !data->theme_dark_hour_spin || !data->theme_dark_minute_spin) {
+        return;
+    }
+
+    data->theme_light_hour = (gint)gtk_spin_button_get_value(GTK_SPIN_BUTTON(data->theme_light_hour_spin));
+    data->theme_light_minute = (gint)gtk_spin_button_get_value(GTK_SPIN_BUTTON(data->theme_light_minute_spin));
+    data->theme_dark_hour = (gint)gtk_spin_button_get_value(GTK_SPIN_BUTTON(data->theme_dark_hour_spin));
+    data->theme_dark_minute = (gint)gtk_spin_button_get_value(GTK_SPIN_BUTTON(data->theme_dark_minute_spin));
+
+    save_theme_to_config(data);
+    theme_evaluate(data);
+}
+
+static GtkWidget *create_theme_time_row(AppData *data, const char *label_text,
+                                        GtkWidget **label_out,
+                                        GtkWidget **hour_spin_out,
+                                        GtkWidget **minute_spin_out,
+                                        gint hour_value, gint minute_value) {
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_widget_set_halign(row, GTK_ALIGN_START);
+    gtk_widget_add_css_class(row, "theme-row");
+
+    GtkWidget *label = gtk_label_new(label_text);
+    gtk_widget_add_css_class(label, "settings-label");
+
+    GtkWidget *hour_spin = gtk_spin_button_new_with_range(0, 23, 1);
+    gtk_spin_button_set_digits(GTK_SPIN_BUTTON(hour_spin), 0);
+    gtk_spin_button_set_wrap(GTK_SPIN_BUTTON(hour_spin), TRUE);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(hour_spin), hour_value);
+    gtk_widget_set_tooltip_text(hour_spin, "0-23");
+
+    GtkWidget *colon = gtk_label_new(":");
+    gtk_widget_add_css_class(colon, "settings-label");
+
+    GtkWidget *minute_spin = gtk_spin_button_new_with_range(0, 59, 1);
+    gtk_spin_button_set_digits(GTK_SPIN_BUTTON(minute_spin), 0);
+    gtk_spin_button_set_wrap(GTK_SPIN_BUTTON(minute_spin), TRUE);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(minute_spin), minute_value);
+    gtk_widget_set_tooltip_text(minute_spin, "0-59");
+
+    g_signal_connect(hour_spin, "value-changed", G_CALLBACK(on_theme_time_changed), data);
+    g_signal_connect(minute_spin, "value-changed", G_CALLBACK(on_theme_time_changed), data);
+
+    gtk_box_append(GTK_BOX(row), label);
+    gtk_box_append(GTK_BOX(row), hour_spin);
+    gtk_box_append(GTK_BOX(row), colon);
+    gtk_box_append(GTK_BOX(row), minute_spin);
+
+    *label_out = label;
+    *hour_spin_out = hour_spin;
+    *minute_spin_out = minute_spin;
+    return row;
+}
+
 static void on_exit_clicked(GtkWidget *widget, gpointer user_data) {
     (void)widget;
     GtkApplication *app = (GtkApplication *)user_data;
@@ -233,6 +337,21 @@ void ui_refresh_translations(AppData *data) {
     if (data->exit_btn) {
         gtk_button_set_label(GTK_BUTTON(data->exit_btn), i18n_(data, I18N_EXIT));
     }
+    if (data->appearance_title_label) {
+        gtk_label_set_text(GTK_LABEL(data->appearance_title_label), i18n_(data, I18N_APPEARANCE_SETTINGS));
+    }
+    if (data->theme_light_label) {
+        gtk_label_set_text(GTK_LABEL(data->theme_light_label), i18n_(data, I18N_THEME_LIGHT_MODE));
+    }
+    if (data->theme_schedule_label) {
+        gtk_label_set_text(GTK_LABEL(data->theme_schedule_label), i18n_(data, I18N_THEME_SCHEDULE));
+    }
+    if (data->theme_light_at_label) {
+        gtk_label_set_text(GTK_LABEL(data->theme_light_at_label), i18n_(data, I18N_THEME_LIGHT_AT));
+    }
+    if (data->theme_dark_at_label) {
+        gtk_label_set_text(GTK_LABEL(data->theme_dark_at_label), i18n_(data, I18N_THEME_DARK_AT));
+    }
     if (data->forecast_mode_switch) {
         gtk_widget_set_tooltip_text(data->forecast_mode_switch,
                                     data->forecast_mode == FORECAST_MODE_DAILY
@@ -269,7 +388,7 @@ static void create_settings_window(AppData *data) {
 
     data->settings_window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(data->settings_window), i18n_(data, I18N_SETTINGS_TITLE));
-    gtk_window_set_default_size(GTK_WINDOW(data->settings_window), 450, 240);
+    gtk_window_set_default_size(GTK_WINDOW(data->settings_window), 480, 430);
     gtk_window_set_resizable(GTK_WINDOW(data->settings_window), TRUE);
     gtk_window_set_modal(GTK_WINDOW(data->settings_window), FALSE);
     gtk_widget_set_name(data->settings_window, "settings-window");
@@ -332,6 +451,62 @@ static void create_settings_window(AppData *data) {
     gtk_box_append(GTK_BOX(location_box), data->update_location_btn);
 
     gtk_box_append(GTK_BOX(main_box), location_box);
+
+    /* Appearance section */
+    data->appearance_title_label = gtk_label_new(i18n_(data, I18N_APPEARANCE_SETTINGS));
+    gtk_widget_add_css_class(data->appearance_title_label, "settings-title");
+    gtk_widget_set_halign(data->appearance_title_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(main_box), data->appearance_title_label);
+
+    GtkWidget *theme_light_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_halign(theme_light_row, GTK_ALIGN_START);
+    gtk_widget_add_css_class(theme_light_row, "theme-row");
+
+    data->theme_light_label = gtk_label_new(i18n_(data, I18N_THEME_LIGHT_MODE));
+    gtk_widget_add_css_class(data->theme_light_label, "settings-label");
+    data->theme_light_switch = gtk_switch_new();
+    gtk_widget_set_valign(data->theme_light_switch, GTK_ALIGN_CENTER);
+    gtk_switch_set_active(GTK_SWITCH(data->theme_light_switch), data->theme_mode == THEME_MODE_LIGHT);
+    gtk_widget_set_sensitive(data->theme_light_switch, !data->theme_schedule_enabled);
+    g_signal_connect(data->theme_light_switch, "notify::active",
+                     G_CALLBACK(on_theme_light_switch_changed), data);
+    gtk_box_append(GTK_BOX(theme_light_row), data->theme_light_label);
+    gtk_box_append(GTK_BOX(theme_light_row), data->theme_light_switch);
+    gtk_box_append(GTK_BOX(main_box), theme_light_row);
+
+    GtkWidget *theme_schedule_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_halign(theme_schedule_row, GTK_ALIGN_START);
+    gtk_widget_add_css_class(theme_schedule_row, "theme-row");
+
+    data->theme_schedule_label = gtk_label_new(i18n_(data, I18N_THEME_SCHEDULE));
+    gtk_widget_add_css_class(data->theme_schedule_label, "settings-label");
+    data->theme_schedule_switch = gtk_switch_new();
+    gtk_widget_set_valign(data->theme_schedule_switch, GTK_ALIGN_CENTER);
+    gtk_switch_set_active(GTK_SWITCH(data->theme_schedule_switch), data->theme_schedule_enabled);
+    g_signal_connect(data->theme_schedule_switch, "notify::active",
+                     G_CALLBACK(on_theme_schedule_switch_changed), data);
+    gtk_box_append(GTK_BOX(theme_schedule_row), data->theme_schedule_label);
+    gtk_box_append(GTK_BOX(theme_schedule_row), data->theme_schedule_switch);
+    gtk_box_append(GTK_BOX(main_box), theme_schedule_row);
+
+    GtkWidget *light_at_row = create_theme_time_row(
+        data, i18n_(data, I18N_THEME_LIGHT_AT), &data->theme_light_at_label,
+        &data->theme_light_hour_spin, &data->theme_light_minute_spin,
+        data->theme_light_hour, data->theme_light_minute);
+    GtkWidget *dark_at_row = create_theme_time_row(
+        data, i18n_(data, I18N_THEME_DARK_AT), &data->theme_dark_at_label,
+        &data->theme_dark_hour_spin, &data->theme_dark_minute_spin,
+        data->theme_dark_hour, data->theme_dark_minute);
+
+    gtk_widget_set_sensitive(data->theme_light_at_label, data->theme_schedule_enabled);
+    gtk_widget_set_sensitive(data->theme_light_hour_spin, data->theme_schedule_enabled);
+    gtk_widget_set_sensitive(data->theme_light_minute_spin, data->theme_schedule_enabled);
+    gtk_widget_set_sensitive(data->theme_dark_at_label, data->theme_schedule_enabled);
+    gtk_widget_set_sensitive(data->theme_dark_hour_spin, data->theme_schedule_enabled);
+    gtk_widget_set_sensitive(data->theme_dark_minute_spin, data->theme_schedule_enabled);
+
+    gtk_box_append(GTK_BOX(main_box), light_at_row);
+    gtk_box_append(GTK_BOX(main_box), dark_at_row);
 
     data->settings_close_btn = gtk_button_new_with_label(i18n_(data, I18N_CLOSE));
     gtk_widget_set_halign(data->settings_close_btn, GTK_ALIGN_END);
@@ -476,10 +651,13 @@ void activate(GtkApplication *app, gpointer user_data) {
 
     /* Load CSS */
     data->css_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(data->css_provider, APP_CSS);
     gtk_style_context_add_provider_for_display(gdk_display_get_default(),
                                                GTK_STYLE_PROVIDER(data->css_provider),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+    /* Apply saved/effective theme and start the schedule check timer */
+    theme_init(data);
+    theme_start_timer(data);
 
     /* Initialize clock and timers */
     update_clock(data);

@@ -13,6 +13,7 @@ A GTK4-based clock and weather application designed for repurposed PC-based tabl
 - **Intelligent Retry Logic**: Automatically recovers from network issues with exponential backoff (up to 5 retries)
 - **Cross-platform**: Works on Windows (via MSYS2) and Linux
 - **Bilingual UI**: English and Simplified Chinese (zh_CN), selectable in Settings
+- **Dark & Light Themes**: Dark by default, with a manual light-mode toggle and an automatic schedule (e.g. light at 07:00, dark at 19:00)
 
 ## Requirements
 
@@ -245,6 +246,25 @@ language=zh_CN
 ```
 
 Use `language=en` for English. If Chinese characters do not render correctly on your device, install a CJK font package (e.g. `fonts-noto-cjk` on Debian/Ubuntu).
+
+### Appearance (Dark / Light Mode)
+
+Open **Settings** and choose under **Appearance** / **外观设置**:
+
+- **Light mode** — manual toggle between the dark (default) and light themes. Disabled while the automatic schedule is on.
+- **Automatic schedule** — when enabled, the app switches to **light mode** at the configured *Light at* time and back to **dark mode** at *Dark at* (defaults: 07:00 and 19:00). Times are evaluated every 30 seconds in the **displayed location's timezone** (the same timezone the clock shows), and windows that cross midnight are supported (e.g. light 19:00 → dark 07:00).
+
+Choices are saved in `~/weatherclock.conf` under `[Theme]`:
+
+```ini
+[Theme]
+mode=dark
+schedule_enabled=true
+light_time=07:00
+dark_time=19:00
+```
+
+`mode` is the manual override (`dark` or `light`) and only applies when `schedule_enabled=false`.
 
 ### Desktop integration (Linux)
 
